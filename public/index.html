@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P&amp;ID Review</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">P&amp;ID</span>
+      <div>
+        <h1>P&amp;ID Review</h1>
+        <p>투자비 산출용 설비·배관 정보 추출 및 검토</p>
+      </div>
+    </div>
+    <div class="actions">
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden />
+      <button class="btn primary" id="btnPick" type="button">PDF 입력</button>
+      <button class="btn accent" id="btnAnalyze" type="button" disabled>분석 시작</button>
+      <button class="btn ghost" id="btnDemo" type="button">샘플 데모</button>
+      <div class="export">
+        <button class="btn ghost" id="btnExport" type="button" disabled aria-haspopup="true">내보내기 ▾</button>
+        <div class="menu" id="exportMenu" hidden>
+          <button type="button" data-export="equipment">설비 리스트 (CSV)</button>
+          <button type="button" data-export="lines">배관 리스트 (CSV)</button>
+          <button type="button" data-export="instruments">계기·밸브 (CSV)</button>
+          <button type="button" data-export="issues">검토 항목 (CSV)</button>
+          <button type="button" data-export="json">전체 결과 (JSON)</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="notice" id="apiNotice" hidden></div>
+
+  <section class="filebar" id="fileBar">
+    <span class="muted" id="fileHint">입력된 파일 없음 — 한 장 또는 여러 장의 P&amp;ID PDF를 선택하거나 이 화면에 끌어다 놓으세요.</span>
+    <ul class="chips" id="fileChips"></ul>
+  </section>
+
+  <section class="statusbar" id="statusBar" hidden>
+    <div class="progress" id="progress" hidden>
+      <span class="spinner"></span>
+      <span id="progressText">분석 중...</span>
+      <span class="muted" id="progressTime"></span>
+    </div>
+    <div class="summary" id="summary" hidden>
+      <p id="summaryText"></p>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <main class="layout">
+    <section class="card flow-card">
+      <div class="card-head">
+        <h2>공정 Flow</h2>
+        <div class="toolbar">
+          <select id="drawingFilter" title="도면 선택"><option value="all">전체 도면</option></select>
+          <label title="계기·밸브와 신호선/설치 위치 연결을 함께 표시"><input type="checkbox" id="optInstruments" /> 계기·밸브</label>
+          <label><input type="checkbox" id="optUtility" checked /> 유틸리티</label>
+          <button class="btn small" id="btnFit" type="button">화면 맞춤</button>
+        </div>
+      </div>
+      <div class="flow-wrap">
+        <div id="cy"></div>
+        <div class="empty" id="flowEmpty">
+          <div class="empty-icon">⇄</div>
+          <p><strong>PDF 입력</strong> 버튼으로 P&amp;ID를 선택하고 <strong>분석 시작</strong>을 누르세요.</p>
+          <p class="muted">API 키 없이 기능을 확인하려면 <strong>샘플 데모</strong>를 누르세요.</p>
+        </div>
+        <ul class="legend">
+          <li><i class="lg eq"></i>설비</li>
+          <li><i class="lg ins"></i>계기</li>
+          <li><i class="lg val"></i>밸브</li>
+          <li><i class="lg opc"></i>Off-page / B.L.</li>
+          <li><i class="lg ln"></i>공정 배관</li>
+          <li><i class="lg ut"></i>유틸리티</li>
+          <li><i class="lg bad"></i>검토 필요</li>
+        </ul>
+      </div>
+      <p class="hint">설비나 라인을 클릭하면 상세 정보가 표시됩니다.</p>
+    </section>
+
+    <aside class="card detail-card">
+      <div class="card-head"><h2>상세 정보</h2></div>
+      <div id="detail" class="detail"><p class="muted">Flow 또는 리스트에서 항목을 선택하세요.</p></div>
+    </aside>
+
+    <section class="card list-card">
+      <div class="card-head">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="equipment" role="tab">설비 리스트 <b id="cntEquipment">0</b></button>
+          <button class="tab" data-tab="lines" role="tab">배관 리스트 <b id="cntLines">0</b></button>
+          <button class="tab" data-tab="instruments" role="tab">계기·밸브 <b id="cntInstruments">0</b></button>
+        </div>
+        <input type="search" id="listSearch" placeholder="태그/명칭 검색" />
+      </div>
+      <div class="table-scroll" id="listScroll">
+        <table class="grid" id="listTable"><thead></thead><tbody></tbody></table>
+      </div>
+      <p class="hint" id="listHint">10건씩 표시되며, 그 이상은 스크롤하여 확인하세요. 더블클릭하면 도면 위치를 표시합니다.</p>
+    </section>
+
+    <section class="card issue-card">
+      <div class="card-head">
+        <h2>검토 필요 항목 <b class="count" id="cntIssues">0</b></h2>
+        <div class="sev-filter" id="sevFilter">
+          <button class="sev-btn active" data-sev="all">전체</button>
+          <button class="sev-btn" data-sev="high">높음 <b id="cntHigh">0</b></button>
+          <button class="sev-btn" data-sev="medium">중간 <b id="cntMedium">0</b></button>
+          <button class="sev-btn" data-sev="low">낮음 <b id="cntLow">0</b></button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="grid issues" id="issueTable">
+          <thead><tr><th style="width:64px">심각도</th><th style="width:110px">구분</th><th>내용</th><th style="width:130px">대상</th><th style="width:96px">도면</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint"><strong>더블클릭</strong>하면 입력된 P&amp;ID의 해당 부분을 표시합니다.</p>
+    </section>
+  </main>
+
+  <div class="modal" id="viewer" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+      <div class="modal-head">
+        <div>
+          <h3 id="viewerTitle">도면 보기</h3>
+          <p class="muted" id="viewerSub"></p>
+        </div>
+        <div class="modal-tools">
+          <button class="btn small" id="vZoomIn" type="button" title="확대">＋</button>
+          <button class="btn small" id="vZoomOut" type="button" title="축소">－</button>
+          <button class="btn small" id="vFocus" type="button">해당 위치</button>
+          <button class="btn small" id="vFull" type="button">페이지 전체</button>
+          <button class="btn small ghost" id="vClose" type="button" title="닫기 (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="viewport" id="vViewport">
+          <canvas id="vCanvas"></canvas>
+          <div class="marks" id="vMarks"></div>
+          <div class="v-msg" id="vMsg" hidden></div>
+        </div>
+        <div class="minimap" id="vMinimap">
+          <canvas id="vThumb"></canvas>
+          <div class="mm-view" id="vMmView"></div>
+          <div id="vMmMarks"></div>
+        </div>
+      </div>
+      <p class="hint">드래그로 이동, 마우스 휠로 확대/축소, 우측 미니맵 클릭으로 위치 이동</p>
+    </div>
+  </div>
+
+  <div class="drop-overlay" id="dropOverlay" hidden><div>PDF를 여기에 놓으세요</div></div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="/vendor/cytoscape.min.js"></script>
+  <script src="/vendor/cytoscape-dagre.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
