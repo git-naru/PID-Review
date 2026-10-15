@@ -21,20 +21,48 @@ const LOC = {
   },
 };
 const CONFIDENCE = { type: 'string', enum: ['high', 'medium', 'low'] };
+const CODE_TABLE = {
+  type: 'array',
+  items: { type: 'object', additionalProperties: false, required: ['code', 'description'], properties: { code: str, description: str } },
+};
 
 export const ANALYSIS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['summary', 'drawings', 'nodes', 'lines', 'issues'],
+  required: ['summary', 'legend', 'drawings', 'nodes', 'lines', 'issues'],
   properties: {
     summary: { type: 'string', description: 'Korean, 2-4 sentences describing the process' },
+    legend: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'Conventions read from the legend / symbol sheets. Empty arrays and found=false when no legend sheet was provided.',
+      required: ['found', 'pages', 'line_number_format', 'fluid_codes', 'piping_classes', 'equipment_codes', 'instrument_letters', 'symbols', 'notes'],
+      properties: {
+        found: { type: 'boolean' },
+        pages: {
+          type: 'array',
+          items: { type: 'object', additionalProperties: false, required: ['file_index', 'page'], properties: { file_index: { type: 'integer' }, page: { type: 'integer' } } },
+        },
+        line_number_format: { type: 'string', description: 'e.g. SIZE - FLUID CODE - SEQUENCE NO. - PIPING CLASS (- INSULATION). Include the example as written.' },
+        fluid_codes: CODE_TABLE,
+        piping_classes: { ...CODE_TABLE, description: 'Piping class/spec codes with material, rating, corrosion allowance as written' },
+        equipment_codes: { ...CODE_TABLE, description: 'Equipment tag prefixes, e.g. P = PUMP' },
+        instrument_letters: { ...CODE_TABLE, description: 'Instrument identification letters. Prefix succeeding-letter entries with "+" in code (e.g. "+I") to distinguish them from first letters.' },
+        symbols: { ...CODE_TABLE, description: 'Line types, valve/fitting/instrument symbols and abbreviations. code = short symbol name' },
+        notes: { type: 'string', description: 'General notes relevant to quantities / cost (Korean or original)' },
+      },
+    },
     drawings: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['file_index', 'page', 'drawing_no', 'title', 'revision'],
-        properties: { file_index: { type: 'integer' }, page: { type: 'integer' }, drawing_no: str, title: str, revision: str },
+        required: ['file_index', 'page', 'sheet_type', 'drawing_no', 'title', 'revision'],
+        properties: {
+          file_index: { type: 'integer' }, page: { type: 'integer' },
+          sheet_type: { type: 'string', enum: ['legend', 'pid', 'other'] },
+          drawing_no: str, title: str, revision: str,
+        },
       },
     },
     nodes: {
@@ -110,8 +138,18 @@ The extracted data will be used as input for CAPEX (investment cost) estimation,
 correctness of equipment data and pipe line data matter most.
 
 Your job:
-1. Read every page of every uploaded P&ID. Identify drawing number, title and revision from the title block.
-2. Extract every node:
+0. Find the legend sheets first. P&ID sets usually start with LEGEND / SYMBOLS / 범례 sheets that define the line
+   numbering system, fluid codes, piping classes, equipment tag prefixes, instrument identification letters, and the
+   symbols for lines, valves and instruments. Read them completely and fill "legend". Then interpret every other
+   sheet with those conventions:
+   - split each line number by the legend's format into size / fluid_code / spec_class / insulation;
+   - classify equipment by the tag prefix definitions, instruments by the identification letters;
+   - recognise valves, instruments, line types and connectors by the legend symbols, not by guesswork.
+   Legend sheets contain example tags and line numbers - never extract nodes or lines from legend sheets.
+   If no legend is provided, use common industry conventions (ISA 5.1 etc.), set legend.found=false, and lower the
+   confidence of items whose meaning depends on project-specific codes.
+1. Read every page of every uploaded P&ID. Identify drawing number, title, revision and sheet_type from the title block.
+2. Extract every node (P&ID sheets only):
    - equipment (tanks, vessels, columns, pumps, compressors, heat exchangers, filters, packages...). Merge the
      equipment data box / equipment list text into the matching equipment's specs. Spare pumps (A/B) are separate nodes.
    - instruments (transmitters, indicators, controllers, switches) and valves of interest (control valves,
@@ -124,7 +162,8 @@ Your job:
 4. Report issues you observe directly on the drawing (Korean text): lines ending without a destination, equipment
    with no connected line, missing line number / size / spec class, data box values inconsistent with the symbol
    (e.g. tag mismatch), duplicated tags, off-page connectors whose referenced drawing is not among the uploaded files,
-   illegible text, flow direction contradictions.
+   illegible text, flow direction contradictions, and anything that does not follow the legend (undefined piping class
+   or fluid code, line numbers not matching the numbering format, symbols not defined in the legend).
 
 Rules:
 - Never invent data. If a value is not on the drawing, use an empty string and (if it matters for cost) raise an issue.

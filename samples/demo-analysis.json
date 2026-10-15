@@ -1,88 +1,1109 @@
 {
-  "summary": "원료 탱크(TK-101)의 Feed를 Feed Pump(P-101A/B)로 승압하여 Feed Preheater(E-101)에서 냉각수와 열교환한 뒤 Flash Separator(V-101)로 보내고, 상부 기상은 PID-100-002의 Product Receiver(V-201)로 이송됩니다. V-201의 제품은 Product Pump(P-201)와 Product Cooler(E-201)를 거쳐 PID-100-003(미입력)으로 이송됩니다.",
+  "summary": "원료 탱크(TK-101)의 Feed를 Feed Pump(P-101A/B)로 승압하여 Feed Preheater(E-101)에서 냉각수와 열교환한 뒤 Flash Separator(V-101)로 보내고, 상부 기상은 PID-100-002의 Product Receiver(V-201)로 이송됩니다. V-201의 제품은 Product Pump(P-201)와 Product Cooler(E-201)를 거쳐 PID-100-003(미입력)으로 이송됩니다. 범례(PID-100-000)의 라인 번호 체계와 배관 Class 정의를 적용해 판독했습니다.",
+  "legend": {
+    "found": true,
+    "pages": [
+      {
+        "file_index": 0,
+        "page": 1
+      }
+    ],
+    "line_number_format": "SIZE - FLUID CODE - SEQUENCE NO. - PIPING CLASS (예: 6\"-P-1001-A1A, 순번 첫 자리 = Area)",
+    "fluid_codes": [
+      {
+        "code": "P",
+        "description": "PROCESS"
+      },
+      {
+        "code": "CW",
+        "description": "COOLING WATER (SUPPLY/RETURN)"
+      },
+      {
+        "code": "LPS",
+        "description": "LOW PRESSURE STEAM"
+      },
+      {
+        "code": "N",
+        "description": "NITROGEN"
+      },
+      {
+        "code": "IA",
+        "description": "INSTRUMENT AIR"
+      },
+      {
+        "code": "D",
+        "description": "DRAIN"
+      }
+    ],
+    "piping_classes": [
+      {
+        "code": "A1A",
+        "description": "CS (A106 Gr.B), ASME 150#, CA 3.0 mm - PROCESS"
+      },
+      {
+        "code": "B1A",
+        "description": "CS GALVANIZED, ASME 150#, CA 1.5 mm - UTILITY WATER"
+      },
+      {
+        "code": "S1A",
+        "description": "SS316L, ASME 150#, CA 0 mm - CORROSIVE / PRODUCT"
+      }
+    ],
+    "equipment_codes": [
+      {
+        "code": "TK",
+        "description": "TANK"
+      },
+      {
+        "code": "V",
+        "description": "VESSEL / DRUM / SEPARATOR"
+      },
+      {
+        "code": "P",
+        "description": "PUMP (A/B = OPERATING/STANDBY)"
+      },
+      {
+        "code": "E",
+        "description": "HEAT EXCHANGER / COOLER"
+      },
+      {
+        "code": "C",
+        "description": "COLUMN"
+      },
+      {
+        "code": "K",
+        "description": "COMPRESSOR"
+      }
+    ],
+    "instrument_letters": [
+      {
+        "code": "F",
+        "description": "FLOW"
+      },
+      {
+        "code": "L",
+        "description": "LEVEL"
+      },
+      {
+        "code": "P",
+        "description": "PRESSURE"
+      },
+      {
+        "code": "T",
+        "description": "TEMPERATURE"
+      },
+      {
+        "code": "+I",
+        "description": "INDICATOR"
+      },
+      {
+        "code": "+C",
+        "description": "CONTROLLER"
+      },
+      {
+        "code": "+T",
+        "description": "TRANSMITTER"
+      },
+      {
+        "code": "+V",
+        "description": "VALVE"
+      },
+      {
+        "code": "+SV",
+        "description": "SAFETY VALVE"
+      }
+    ],
+    "symbols": [
+      {
+        "code": "PROCESS LINE",
+        "description": "실선"
+      },
+      {
+        "code": "UTILITY LINE",
+        "description": "파선"
+      },
+      {
+        "code": "INSTRUMENT SIGNAL",
+        "description": "점선"
+      },
+      {
+        "code": "CONTROL VALVE",
+        "description": "다이어프램 구동 글로브 밸브"
+      },
+      {
+        "code": "SAFETY / RELIEF VALVE",
+        "description": "안전밸브"
+      },
+      {
+        "code": "FIELD INSTRUMENT",
+        "description": "원 (현장 계기)"
+      },
+      {
+        "code": "PANEL INSTRUMENT (DCS)",
+        "description": "가로선 있는 원 (DCS)"
+      },
+      {
+        "code": "OFF-PAGE CONNECTOR",
+        "description": "오각형 화살표"
+      }
+    ],
+    "notes": "예비 펌프(B)는 운전 펌프(A)의 설비 데이터를 공유함. 보온 코드가 없는 라인은 보온 없음."
+  },
   "drawings": [
-    {"file_index": 0, "page": 1, "drawing_no": "PID-100-001", "title": "FEED PREHEAT AND SEPARATION", "revision": "0"},
-    {"file_index": 1, "page": 1, "drawing_no": "PID-100-002", "title": "PRODUCT RECEIVING AND TRANSFER", "revision": "0"}
+    {
+      "file_index": 0,
+      "page": 1,
+      "sheet_type": "legend",
+      "drawing_no": "PID-100-000",
+      "title": "P&ID LEGEND AND SYMBOLS",
+      "revision": "0"
+    },
+    {
+      "file_index": 1,
+      "page": 1,
+      "sheet_type": "pid",
+      "drawing_no": "PID-100-001",
+      "title": "FEED PREHEAT AND SEPARATION",
+      "revision": "0"
+    },
+    {
+      "file_index": 2,
+      "page": 1,
+      "sheet_type": "pid",
+      "drawing_no": "PID-100-002",
+      "title": "PRODUCT RECEIVING AND TRANSFER",
+      "revision": "0"
+    }
   ],
   "nodes": [
-    {"id": "TK-101", "tag": "TK-101", "name": "FEED TANK", "category": "equipment", "equipment_type": "Tank", "service": "Feed storage",
-     "specs": [{"name": "CAP", "value": "50 m3"}, {"name": "SIZE", "value": "3600 ID x 5000 H"}, {"name": "DP/DT", "value": "ATM / 60 C"}, {"name": "MOC", "value": "CS"}],
-     "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "P-101A", "tag": "P-101A", "name": "FEED PUMP", "category": "equipment", "equipment_type": "Pump", "service": "Feed transfer",
-     "specs": [{"name": "CAP", "value": "30 m3/h x 45 m"}, {"name": "MOTOR", "value": "11 kW"}, {"name": "TYPE", "value": "CENTRIFUGAL"}, {"name": "MOC", "value": "CS/SS316"}],
-     "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "P-101B", "tag": "P-101B", "name": "FEED PUMP (STBY)", "category": "equipment", "equipment_type": "Pump", "service": "Feed transfer (standby)",
-     "specs": [{"name": "CAP", "value": "30 m3/h x 45 m"}, {"name": "MOTOR", "value": "11 kW"}, {"name": "TYPE", "value": "CENTRIFUGAL"}, {"name": "MOC", "value": "CS/SS316"}],
-     "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": "데이터 박스 P-101A/B 공용"},
-    {"id": "E-101", "tag": "E-101", "name": "FEED PREHEATER", "category": "equipment", "equipment_type": "Heat Exchanger", "service": "Feed preheat",
-     "specs": [{"name": "DUTY", "value": "450 kW"}, {"name": "TYPE", "value": "SHELL & TUBE (BEM)"}, {"name": "DP", "value": "10 / 6 barg"}, {"name": "MOC", "value": "CS / SS304"}],
-     "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "V-101", "tag": "V-101", "name": "FLASH SEPARATOR", "category": "equipment", "equipment_type": "Vessel", "service": "Flash separation",
-     "specs": [{"name": "SIZE", "value": "1500 ID x 4000 T/T"}, {"name": "DP/DT", "value": "8 barg / 150 C"}, {"name": "MOC", "value": "CS"}],
-     "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "TK-102", "tag": "TK-102", "name": "SLOP TANK", "category": "equipment", "equipment_type": "Tank", "service": "Slop",
-     "specs": [{"name": "CAP", "value": "10 m3"}, {"name": "DP/DT", "value": "ATM / 60 C"}, {"name": "MOC", "value": "CS"}],
-     "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "FCV-101", "tag": "FCV-101", "name": "FEED FLOW CONTROL VALVE", "category": "valve", "equipment_type": "Control Valve", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "FIC-101", "tag": "FIC-101", "name": "FLOW INDICATING CONTROLLER", "category": "instrument", "equipment_type": "Controller", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "FT-101", "tag": "FT-101", "name": "FLOW TRANSMITTER", "category": "instrument", "equipment_type": "Transmitter", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "TI-102", "tag": "TI-102", "name": "TEMPERATURE INDICATOR", "category": "instrument", "equipment_type": "Indicator", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "LT-101", "tag": "LT-101", "name": "LEVEL TRANSMITTER", "category": "instrument", "equipment_type": "Transmitter", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "PSV-101", "tag": "PSV-101", "name": "PRESSURE SAFETY VALVE", "category": "valve", "equipment_type": "Safety Valve", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "medium", "note": "토출처 미표기"},
-    {"id": "CWS", "tag": "CWS", "name": "COOLING WATER SUPPLY", "category": "battery_limit", "equipment_type": "Utility Header", "service": "Cooling water",
-     "specs": [], "offpage_ref": "CWS", "loc": {"file_index": 0, "page": 1, "bbox": [0.462, 0.44, 0.478, 0.452]}, "confidence": "high", "note": ""},
-    {"id": "CWR", "tag": "CWR", "name": "COOLING WATER RETURN", "category": "battery_limit", "equipment_type": "Utility Header", "service": "Cooling water",
-     "specs": [], "offpage_ref": "CWR", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "OPC:PID-100-001:1", "tag": "", "name": "TO PID-100-002", "category": "offpage", "equipment_type": "Off-page Connector", "service": "",
-     "specs": [], "offpage_ref": "PID-100-002", "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "OPC:PID-100-002:1", "tag": "", "name": "FROM PID-100-001", "category": "offpage", "equipment_type": "Off-page Connector", "service": "",
-     "specs": [], "offpage_ref": "PID-100-001", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "V-201", "tag": "V-201", "name": "PRODUCT RECEIVER", "category": "equipment", "equipment_type": "Vessel", "service": "Product receiving",
-     "specs": [{"name": "SIZE", "value": "1200 ID x 3000 T/T"}, {"name": "DP/DT", "value": "5 barg / 120 C"}, {"name": "MOC", "value": "SS304"}],
-     "offpage_ref": "", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "P-201", "tag": "P-201", "name": "PRODUCT PUMP", "category": "equipment", "equipment_type": "Pump", "service": "Product transfer",
-     "specs": [{"name": "CAP", "value": "20 m3/h x 35 m"}, {"name": "MOTOR", "value": "7.5 kW"}, {"name": "MOC", "value": "SS316"}],
-     "offpage_ref": "", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "E-201", "tag": "E-201", "name": "PRODUCT COOLER", "category": "equipment", "equipment_type": "Heat Exchanger", "service": "Product cooling",
-     "specs": [{"name": "DUTY", "value": "180 kW"}, {"name": "TYPE", "value": "PLATE"}, {"name": "MOC", "value": "SS316"}],
-     "offpage_ref": "", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": "냉각 매체 배관 미표기"},
-    {"id": "LT-201", "tag": "LT-201", "name": "LEVEL TRANSMITTER", "category": "instrument", "equipment_type": "Transmitter", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "medium", "note": ""},
-    {"id": "PI-201", "tag": "PI-201", "name": "PRESSURE INDICATOR", "category": "instrument", "equipment_type": "Indicator", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "TI-201", "tag": "TI-201", "name": "TEMPERATURE INDICATOR", "category": "instrument", "equipment_type": "Indicator", "service": "",
-     "specs": [], "offpage_ref": "", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "OPC:PID-100-002:2", "tag": "", "name": "TO PID-100-003", "category": "offpage", "equipment_type": "Off-page Connector", "service": "",
-     "specs": [], "offpage_ref": "PID-100-003", "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""}
+    {
+      "id": "TK-101",
+      "tag": "TK-101",
+      "name": "FEED TANK",
+      "category": "equipment",
+      "equipment_type": "Tank",
+      "service": "Feed storage",
+      "specs": [
+        {
+          "name": "CAP",
+          "value": "50 m3"
+        },
+        {
+          "name": "SIZE",
+          "value": "3600 ID x 5000 H"
+        },
+        {
+          "name": "DP/DT",
+          "value": "ATM / 60 C"
+        },
+        {
+          "name": "MOC",
+          "value": "CS"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "P-101A",
+      "tag": "P-101A",
+      "name": "FEED PUMP",
+      "category": "equipment",
+      "equipment_type": "Pump",
+      "service": "Feed transfer",
+      "specs": [
+        {
+          "name": "CAP",
+          "value": "30 m3/h x 45 m"
+        },
+        {
+          "name": "MOTOR",
+          "value": "11 kW"
+        },
+        {
+          "name": "TYPE",
+          "value": "CENTRIFUGAL"
+        },
+        {
+          "name": "MOC",
+          "value": "CS/SS316"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "P-101B",
+      "tag": "P-101B",
+      "name": "FEED PUMP (STBY)",
+      "category": "equipment",
+      "equipment_type": "Pump",
+      "service": "Feed transfer (standby)",
+      "specs": [
+        {
+          "name": "CAP",
+          "value": "30 m3/h x 45 m"
+        },
+        {
+          "name": "MOTOR",
+          "value": "11 kW"
+        },
+        {
+          "name": "TYPE",
+          "value": "CENTRIFUGAL"
+        },
+        {
+          "name": "MOC",
+          "value": "CS/SS316"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": "데이터 박스 P-101A/B 공용"
+    },
+    {
+      "id": "E-101",
+      "tag": "E-101",
+      "name": "FEED PREHEATER",
+      "category": "equipment",
+      "equipment_type": "Heat Exchanger",
+      "service": "Feed preheat",
+      "specs": [
+        {
+          "name": "DUTY",
+          "value": "450 kW"
+        },
+        {
+          "name": "TYPE",
+          "value": "SHELL & TUBE (BEM)"
+        },
+        {
+          "name": "DP",
+          "value": "10 / 6 barg"
+        },
+        {
+          "name": "MOC",
+          "value": "CS / SS304"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "V-101",
+      "tag": "V-101",
+      "name": "FLASH SEPARATOR",
+      "category": "equipment",
+      "equipment_type": "Vessel",
+      "service": "Flash separation",
+      "specs": [
+        {
+          "name": "SIZE",
+          "value": "1500 ID x 4000 T/T"
+        },
+        {
+          "name": "DP/DT",
+          "value": "8 barg / 150 C"
+        },
+        {
+          "name": "MOC",
+          "value": "CS"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "TK-102",
+      "tag": "TK-102",
+      "name": "SLOP TANK",
+      "category": "equipment",
+      "equipment_type": "Tank",
+      "service": "Slop",
+      "specs": [
+        {
+          "name": "CAP",
+          "value": "10 m3"
+        },
+        {
+          "name": "DP/DT",
+          "value": "ATM / 60 C"
+        },
+        {
+          "name": "MOC",
+          "value": "CS"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "FCV-101",
+      "tag": "FCV-101",
+      "name": "FEED FLOW CONTROL VALVE",
+      "category": "valve",
+      "equipment_type": "Control Valve",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "FIC-101",
+      "tag": "FIC-101",
+      "name": "FLOW INDICATING CONTROLLER",
+      "category": "instrument",
+      "equipment_type": "Controller",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "FT-101",
+      "tag": "FT-101",
+      "name": "FLOW TRANSMITTER",
+      "category": "instrument",
+      "equipment_type": "Transmitter",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "TI-102",
+      "tag": "TI-102",
+      "name": "TEMPERATURE INDICATOR",
+      "category": "instrument",
+      "equipment_type": "Indicator",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "LT-101",
+      "tag": "LT-101",
+      "name": "LEVEL TRANSMITTER",
+      "category": "instrument",
+      "equipment_type": "Transmitter",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "PSV-101",
+      "tag": "PSV-101",
+      "name": "PRESSURE SAFETY VALVE",
+      "category": "valve",
+      "equipment_type": "Safety Valve",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "medium",
+      "note": "토출처 미표기"
+    },
+    {
+      "id": "CWS",
+      "tag": "CWS",
+      "name": "COOLING WATER SUPPLY",
+      "category": "battery_limit",
+      "equipment_type": "Utility Header",
+      "service": "Cooling water",
+      "specs": [],
+      "offpage_ref": "CWS",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": [
+          0.462,
+          0.44,
+          0.478,
+          0.452
+        ]
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "CWR",
+      "tag": "CWR",
+      "name": "COOLING WATER RETURN",
+      "category": "battery_limit",
+      "equipment_type": "Utility Header",
+      "service": "Cooling water",
+      "specs": [],
+      "offpage_ref": "CWR",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "OPC:PID-100-001:1",
+      "tag": "",
+      "name": "TO PID-100-002",
+      "category": "offpage",
+      "equipment_type": "Off-page Connector",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "PID-100-002",
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "OPC:PID-100-002:1",
+      "tag": "",
+      "name": "FROM PID-100-001",
+      "category": "offpage",
+      "equipment_type": "Off-page Connector",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "PID-100-001",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "V-201",
+      "tag": "V-201",
+      "name": "PRODUCT RECEIVER",
+      "category": "equipment",
+      "equipment_type": "Vessel",
+      "service": "Product receiving",
+      "specs": [
+        {
+          "name": "SIZE",
+          "value": "1200 ID x 3000 T/T"
+        },
+        {
+          "name": "DP/DT",
+          "value": "5 barg / 120 C"
+        },
+        {
+          "name": "MOC",
+          "value": "SS304"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "P-201",
+      "tag": "P-201",
+      "name": "PRODUCT PUMP",
+      "category": "equipment",
+      "equipment_type": "Pump",
+      "service": "Product transfer",
+      "specs": [
+        {
+          "name": "CAP",
+          "value": "20 m3/h x 35 m"
+        },
+        {
+          "name": "MOTOR",
+          "value": "7.5 kW"
+        },
+        {
+          "name": "MOC",
+          "value": "SS316"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "E-201",
+      "tag": "E-201",
+      "name": "PRODUCT COOLER",
+      "category": "equipment",
+      "equipment_type": "Heat Exchanger",
+      "service": "Product cooling",
+      "specs": [
+        {
+          "name": "DUTY",
+          "value": "180 kW"
+        },
+        {
+          "name": "TYPE",
+          "value": "PLATE"
+        },
+        {
+          "name": "MOC",
+          "value": "SS316"
+        }
+      ],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": "냉각 매체 배관 미표기"
+    },
+    {
+      "id": "LT-201",
+      "tag": "LT-201",
+      "name": "LEVEL TRANSMITTER",
+      "category": "instrument",
+      "equipment_type": "Transmitter",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "medium",
+      "note": ""
+    },
+    {
+      "id": "PI-201",
+      "tag": "PI-201",
+      "name": "PRESSURE INDICATOR",
+      "category": "instrument",
+      "equipment_type": "Indicator",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "TI-201",
+      "tag": "TI-201",
+      "name": "TEMPERATURE INDICATOR",
+      "category": "instrument",
+      "equipment_type": "Indicator",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "OPC:PID-100-002:2",
+      "tag": "",
+      "name": "TO PID-100-003",
+      "category": "offpage",
+      "equipment_type": "Off-page Connector",
+      "service": "",
+      "specs": [],
+      "offpage_ref": "PID-100-003",
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    }
   ],
   "lines": [
-    {"id": "6\"-P-1001-A1A", "line_no": "6\"-P-1001-A1A", "kind": "process", "size": "6\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Pump suction", "from_id": "TK-101", "to_id": "P-101A", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "6\"-P-1003-A1A", "line_no": "6\"-P-1003-A1A", "kind": "process", "size": "6\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Standby pump suction", "from_id": "TK-101", "to_id": "P-101B", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": "6\"-P-1001 분기"},
-    {"id": "4\"-P-1002-A1A", "line_no": "4\"-P-1002-A1A", "kind": "process", "size": "4\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Pump discharge", "from_id": "P-101A", "to_id": "E-101", "inline_items": ["FT-101", "FCV-101"], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "LINE-1", "line_no": "", "kind": "process", "size": "", "fluid_code": "P", "spec_class": "", "insulation": "", "service": "Standby pump discharge tie-in", "from_id": "P-101B", "to_id": "E-101", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": [0.24, 0.73, 0.34, 0.76]}, "confidence": "medium", "note": "4\"-P-1002에 합류"},
-    {"id": "4\"-P-1004", "line_no": "4\"-P-1004", "kind": "process", "size": "4\"", "fluid_code": "P", "spec_class": "", "insulation": "", "service": "Preheated feed", "from_id": "E-101", "to_id": "V-101", "inline_items": ["TI-102"], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "4\"-P-1005-A1A", "line_no": "4\"-P-1005-A1A", "kind": "process", "size": "4\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Separator overhead", "from_id": "V-101", "to_id": "OPC:PID-100-001:1", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "2\"-P-1006-A1A", "line_no": "2\"-P-1006-A1A", "kind": "process", "size": "2\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Separator bottom", "from_id": "V-101", "to_id": "", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": "화살표 끝 연결처 없음"},
-    {"id": "3\"-CW-1101-B1A", "line_no": "3\"-CW-1101-B1A", "kind": "utility", "size": "3\"", "fluid_code": "CW", "spec_class": "B1A", "insulation": "", "service": "Cooling water supply", "from_id": "CWS", "to_id": "E-101", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "3\"-CW-1102-B1A", "line_no": "3\"-CW-1102-B1A", "kind": "utility", "size": "3\"", "fluid_code": "CW", "spec_class": "B1A", "insulation": "", "service": "Cooling water return", "from_id": "E-101", "to_id": "CWR", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "SIG-1", "line_no": "", "kind": "signal", "size": "", "fluid_code": "", "spec_class": "", "insulation": "", "service": "", "from_id": "FIC-101", "to_id": "FCV-101", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "SIG-2", "line_no": "", "kind": "signal", "size": "", "fluid_code": "", "spec_class": "", "insulation": "", "service": "", "from_id": "LT-101", "to_id": "V-101", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "SIG-3", "line_no": "", "kind": "signal", "size": "", "fluid_code": "", "spec_class": "", "insulation": "", "service": "", "from_id": "PSV-101", "to_id": "V-101", "inline_items": [], "loc": {"file_index": 0, "page": 1, "bbox": null}, "confidence": "medium", "note": ""},
-    {"id": "4\"-P-1005-A1A#2", "line_no": "4\"-P-1005-A1A", "kind": "process", "size": "4\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Receiver inlet", "from_id": "OPC:PID-100-002:1", "to_id": "V-201", "inline_items": [], "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "3\"-P-2001-A1A", "line_no": "3\"-P-2001-A1A", "kind": "process", "size": "3\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Pump suction", "from_id": "V-201", "to_id": "P-201", "inline_items": [], "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "3\"-P-2002-A1A", "line_no": "3\"-P-2002-A1A", "kind": "process", "size": "3\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Pump discharge", "from_id": "P-201", "to_id": "E-201", "inline_items": ["PI-201"], "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "3\"-P-2003-A1A", "line_no": "3\"-P-2003-A1A", "kind": "process", "size": "3\"", "fluid_code": "P", "spec_class": "A1A", "insulation": "", "service": "Product to storage", "from_id": "E-201", "to_id": "OPC:PID-100-002:2", "inline_items": ["TI-201"], "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""},
-    {"id": "SIG-4", "line_no": "", "kind": "signal", "size": "", "fluid_code": "", "spec_class": "", "insulation": "", "service": "", "from_id": "LT-201", "to_id": "V-201", "inline_items": [], "loc": {"file_index": 1, "page": 1, "bbox": null}, "confidence": "high", "note": ""}
+    {
+      "id": "6\"-P-1001-A1A",
+      "line_no": "6\"-P-1001-A1A",
+      "kind": "process",
+      "size": "6\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Pump suction",
+      "from_id": "TK-101",
+      "to_id": "P-101A",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "6\"-P-1003-A1A",
+      "line_no": "6\"-P-1003-A1A",
+      "kind": "process",
+      "size": "6\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Standby pump suction",
+      "from_id": "TK-101",
+      "to_id": "P-101B",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": "6\"-P-1001 분기"
+    },
+    {
+      "id": "4\"-P-1002-A1A",
+      "line_no": "4\"-P-1002-A1A",
+      "kind": "process",
+      "size": "4\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Pump discharge",
+      "from_id": "P-101A",
+      "to_id": "E-101",
+      "inline_items": [
+        "FT-101",
+        "FCV-101"
+      ],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "LINE-1",
+      "line_no": "",
+      "kind": "process",
+      "size": "",
+      "fluid_code": "P",
+      "spec_class": "",
+      "insulation": "",
+      "service": "Standby pump discharge tie-in",
+      "from_id": "P-101B",
+      "to_id": "E-101",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": [
+          0.24,
+          0.73,
+          0.34,
+          0.76
+        ]
+      },
+      "confidence": "medium",
+      "note": "4\"-P-1002에 합류"
+    },
+    {
+      "id": "4\"-P-1004",
+      "line_no": "4\"-P-1004",
+      "kind": "process",
+      "size": "4\"",
+      "fluid_code": "P",
+      "spec_class": "",
+      "insulation": "",
+      "service": "Preheated feed",
+      "from_id": "E-101",
+      "to_id": "V-101",
+      "inline_items": [
+        "TI-102"
+      ],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "4\"-P-1005-A1A",
+      "line_no": "4\"-P-1005-A1A",
+      "kind": "process",
+      "size": "4\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Separator overhead",
+      "from_id": "V-101",
+      "to_id": "OPC:PID-100-001:1",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "2\"-P-1006-A1A",
+      "line_no": "2\"-P-1006-A1A",
+      "kind": "process",
+      "size": "2\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Separator bottom",
+      "from_id": "V-101",
+      "to_id": "",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": "화살표 끝 연결처 없음"
+    },
+    {
+      "id": "3\"-CW-1101-B1A",
+      "line_no": "3\"-CW-1101-B1A",
+      "kind": "utility",
+      "size": "3\"",
+      "fluid_code": "CW",
+      "spec_class": "B1A",
+      "insulation": "",
+      "service": "Cooling water supply",
+      "from_id": "CWS",
+      "to_id": "E-101",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "3\"-CW-1102-B1A",
+      "line_no": "3\"-CW-1102-B1A",
+      "kind": "utility",
+      "size": "3\"",
+      "fluid_code": "CW",
+      "spec_class": "B1A",
+      "insulation": "",
+      "service": "Cooling water return",
+      "from_id": "E-101",
+      "to_id": "CWR",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "SIG-1",
+      "line_no": "",
+      "kind": "signal",
+      "size": "",
+      "fluid_code": "",
+      "spec_class": "",
+      "insulation": "",
+      "service": "",
+      "from_id": "FIC-101",
+      "to_id": "FCV-101",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "SIG-2",
+      "line_no": "",
+      "kind": "signal",
+      "size": "",
+      "fluid_code": "",
+      "spec_class": "",
+      "insulation": "",
+      "service": "",
+      "from_id": "LT-101",
+      "to_id": "V-101",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "SIG-3",
+      "line_no": "",
+      "kind": "signal",
+      "size": "",
+      "fluid_code": "",
+      "spec_class": "",
+      "insulation": "",
+      "service": "",
+      "from_id": "PSV-101",
+      "to_id": "V-101",
+      "inline_items": [],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "medium",
+      "note": ""
+    },
+    {
+      "id": "4\"-P-1005-A1A#2",
+      "line_no": "4\"-P-1005-A1A",
+      "kind": "process",
+      "size": "4\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Receiver inlet",
+      "from_id": "OPC:PID-100-002:1",
+      "to_id": "V-201",
+      "inline_items": [],
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "3\"-P-2001-A1A",
+      "line_no": "3\"-P-2001-A1A",
+      "kind": "process",
+      "size": "3\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Pump suction",
+      "from_id": "V-201",
+      "to_id": "P-201",
+      "inline_items": [],
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "3\"-P-2002-A1A",
+      "line_no": "3\"-P-2002-A1A",
+      "kind": "process",
+      "size": "3\"",
+      "fluid_code": "P",
+      "spec_class": "A1A",
+      "insulation": "",
+      "service": "Pump discharge",
+      "from_id": "P-201",
+      "to_id": "E-201",
+      "inline_items": [
+        "PI-201"
+      ],
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "3\"-P-2003-A2A",
+      "line_no": "3\"-P-2003-A2A",
+      "kind": "process",
+      "size": "3\"",
+      "fluid_code": "P",
+      "spec_class": "A2A",
+      "insulation": "",
+      "service": "Product to storage",
+      "from_id": "E-201",
+      "to_id": "OPC:PID-100-002:2",
+      "inline_items": [
+        "TI-201"
+      ],
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    },
+    {
+      "id": "SIG-4",
+      "line_no": "",
+      "kind": "signal",
+      "size": "",
+      "fluid_code": "",
+      "spec_class": "",
+      "insulation": "",
+      "service": "",
+      "from_id": "LT-201",
+      "to_id": "V-201",
+      "inline_items": [],
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      },
+      "confidence": "high",
+      "note": ""
+    }
   ],
   "issues": [
-    {"severity": "high", "category": "unconnected", "title": "Slop Tank 미연결", "description": "TK-102 SLOP TANK가 도면에 표시되어 있으나 입·출구 배관이 전혀 연결되어 있지 않습니다. 연결 배관 누락 또는 다른 도면 표기 여부를 확인하세요.", "related_ids": ["TK-102"], "loc": {"file_index": 0, "page": 1, "bbox": null}},
-    {"severity": "medium", "category": "missing_info", "title": "PSV-101 토출처 미표기", "description": "PSV-101의 토출(Outlet) 배관과 행선지(Flare/Atm.)가 표시되어 있지 않습니다.", "related_ids": ["PSV-101"], "loc": {"file_index": 0, "page": 1, "bbox": null}},
-    {"severity": "medium", "category": "missing_info", "title": "E-201 냉각 매체 배관 누락", "description": "E-201 PRODUCT COOLER의 냉각수(또는 냉매) 공급·회수 배관이 도면에 없습니다.", "related_ids": ["E-201"], "loc": {"file_index": 1, "page": 1, "bbox": null}}
+    {
+      "severity": "high",
+      "category": "unconnected",
+      "title": "Slop Tank 미연결",
+      "description": "TK-102 SLOP TANK가 도면에 표시되어 있으나 입·출구 배관이 전혀 연결되어 있지 않습니다. 연결 배관 누락 또는 다른 도면 표기 여부를 확인하세요.",
+      "related_ids": [
+        "TK-102"
+      ],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      }
+    },
+    {
+      "severity": "medium",
+      "category": "missing_info",
+      "title": "PSV-101 토출처 미표기",
+      "description": "PSV-101의 토출(Outlet) 배관과 행선지(Flare/Atm.)가 표시되어 있지 않습니다.",
+      "related_ids": [
+        "PSV-101"
+      ],
+      "loc": {
+        "file_index": 1,
+        "page": 1,
+        "bbox": null
+      }
+    },
+    {
+      "severity": "medium",
+      "category": "missing_info",
+      "title": "E-201 냉각 매체 배관 누락",
+      "description": "E-201 PRODUCT COOLER의 냉각수(또는 냉매) 공급·회수 배관이 도면에 없습니다.",
+      "related_ids": [
+        "E-201"
+      ],
+      "loc": {
+        "file_index": 2,
+        "page": 1,
+        "bbox": null
+      }
+    }
   ]
 }

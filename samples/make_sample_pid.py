@@ -1,8 +1,10 @@
-"""데모/테스트용 샘플 P&ID PDF 2장을 생성한다.
+"""데모/테스트용 샘플 P&ID PDF 3장(범례 1 + P&ID 2)을 생성한다.
 
+  - PID-100-000: Legend (라인 번호 체계, 유체 코드, 배관 Class, 설비/계기 문자, 기호)
 의도적으로 다음 결함을 포함한다 (검증 로직 확인용):
   - PID-100-001: TK-102 SLOP TANK 미연결, 4"-P-1004 라인 Spec 누락, 2"-P-1006 라인 끝단 미연결
-  - PID-100-002: TO PID-100-003 Off-page (해당 도면 미입력), LT-201 태그 중복
+  - PID-100-002: TO PID-100-003 Off-page (해당 도면 미입력), LT-201 태그 중복,
+                 3"-P-2003-A2A 라인 Class가 범례에 없음
 
 사용법: python3 samples/make_sample_pid.py
 """
@@ -224,7 +226,7 @@ def sheet2(c):
     pump(c, 460, 260, "P-201", "PRODUCT PUMP")
     pipe(c, [(476, 260), (640, 260)], '3"-P-2002-A1A', 0)
     exchanger(c, 690, 260, "E-201", "PRODUCT COOLER")
-    pipe(c, [(740, 260), (960, 260)], '3"-P-2003-A1A', 0)
+    pipe(c, [(740, 260), (960, 260)], '3"-P-2003-A2A', 0)  # 범례에 없는 Class
     offpage(c, 960, 260, "TO PID-100-003", "right")  # 미입력 도면 참조
 
     instrument(c, 380, 420, "LT-201", (335, 420))
@@ -233,8 +235,81 @@ def sheet2(c):
     instrument(c, 820, 310, "TI-201", (820, 260))
 
 
+def legend(c):
+    frame(c, "PID-100-000", "P&ID LEGEND AND SYMBOLS")
+
+    def heading(x, y, s):
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(x, y, s)
+        c.setLineWidth(0.6)
+        c.line(x, y - 3, x + 250, y - 3)
+
+    def table(x, y, rows, w=40):
+        c.setFont("Helvetica", 7.5)
+        for i, (k, v) in enumerate(rows):
+            c.setFont("Helvetica-Bold", 7.5)
+            c.drawString(x, y - 12 * i, k)
+            c.setFont("Helvetica", 7.5)
+            c.drawString(x + w, y - 12 * i, v)
+
+    # 1. 라인 번호 체계
+    heading(50, 770, "1. LINE NUMBERING SYSTEM")
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(80, 745, 'EXAMPLE:  6"-P-1001-A1A')
+    table(80, 725, [("6\"", "NOMINAL PIPE SIZE (INCH)"), ("P", "FLUID CODE"), ("1001", "SEQUENCE NO. (1st DIGIT = AREA)"), ("A1A", "PIPING CLASS")], 50)
+
+    # 2. 유체 코드
+    heading(50, 650, "2. FLUID CODES")
+    table(60, 632, [("P", "PROCESS"), ("CW", "COOLING WATER (SUPPLY/RETURN)"), ("LPS", "LOW PRESSURE STEAM"), ("N", "NITROGEN"), ("IA", "INSTRUMENT AIR"), ("D", "DRAIN")])
+
+    # 3. 배관 Class
+    heading(50, 540, "3. PIPING CLASSES")
+    table(60, 522, [("A1A", "CS (A106 Gr.B), ASME 150#, CA 3.0 mm - PROCESS"), ("B1A", "CS GALVANIZED, ASME 150#, CA 1.5 mm - UTILITY WATER"), ("S1A", "SS316L, ASME 150#, CA 0 mm - CORROSIVE / PRODUCT")])
+
+    # 4. 설비 Tag
+    heading(400, 770, "4. EQUIPMENT IDENTIFICATION")
+    table(410, 752, [("TK", "TANK"), ("V", "VESSEL / DRUM / SEPARATOR"), ("P", "PUMP (A/B = OPERATING/STANDBY)"), ("E", "HEAT EXCHANGER / COOLER"), ("C", "COLUMN"), ("K", "COMPRESSOR")])
+
+    # 5. 계기 문자
+    heading(400, 660, "5. INSTRUMENT IDENTIFICATION LETTERS (ISA 5.1)")
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(410, 642, "1ST LETTER (MEASURED VARIABLE)")
+    c.drawString(580, 642, "SUCCEEDING LETTERS (FUNCTION)")
+    table(410, 628, [("F", "FLOW"), ("L", "LEVEL"), ("P", "PRESSURE"), ("T", "TEMPERATURE")], 18)
+    table(580, 628, [("I", "INDICATOR"), ("C", "CONTROLLER"), ("T", "TRANSMITTER"), ("V", "VALVE"), ("SV", "SAFETY VALVE")], 22)
+
+    # 6. 기호
+    heading(750, 770, "6. SYMBOLS")
+    y = 740
+    sym = [
+        ("PROCESS LINE", lambda x, y: (c.setLineWidth(1.4), c.line(x, y, x + 50, y))),
+        ("UTILITY LINE", lambda x, y: (c.setLineWidth(0.9), c.setDash(6, 3), c.line(x, y, x + 50, y), c.setDash())),
+        ("INSTRUMENT SIGNAL", lambda x, y: (c.setLineWidth(0.8), c.setDash(2, 2), c.line(x, y, x + 50, y), c.setDash())),
+        ("CONTROL VALVE", lambda x, y: control_valve(c, x + 25, y, "")),
+        ("SAFETY / RELIEF VALVE", lambda x, y: psv(c, x + 20, y - 6, "")),
+        ("FIELD INSTRUMENT", lambda x, y: (c.setLineWidth(0.8), c.circle(x + 25, y, 12))),
+        ("PANEL INSTRUMENT (DCS)", lambda x, y: (c.setLineWidth(0.8), c.circle(x + 25, y, 12), c.line(x + 13, y, x + 37, y))),
+        ("OFF-PAGE CONNECTOR", lambda x, y: offpage(c, x, y, "", "right")),
+    ]
+    for label, draw in sym:
+        draw(760, y)
+        c.setFont("Helvetica", 7.5)
+        c.drawString(870, y - 3, label)
+        y -= 40
+
+    # 7. 일반 노트
+    heading(50, 450, "7. GENERAL NOTES")
+    c.setFont("Helvetica", 7.5)
+    for i, s in enumerate([
+        "1. ALL DIMENSIONS IN MM UNLESS OTHERWISE NOTED.",
+        "2. LINES WITHOUT INSULATION CODE ARE NOT INSULATED.",
+        "3. STANDBY PUMPS SHARE THE EQUIPMENT DATA OF THE OPERATING PUMP.",
+    ]):
+        c.drawString(60, 432 - 12 * i, s)
+
+
 def main():
-    for name, fn in (("PID-100-001.pdf", sheet1), ("PID-100-002.pdf", sheet2)):
+    for name, fn in (("PID-100-000.pdf", legend), ("PID-100-001.pdf", sheet1), ("PID-100-002.pdf", sheet2)):
         path = os.path.join(OUT_DIR, name)
         c = canvas.Canvas(path, pagesize=(W, H))
         c.setTitle(name)

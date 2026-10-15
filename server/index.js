@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT || 3000);
 // Claude API 요청 한도(32MB)를 고려한 원본 PDF 총 용량 제한 (base64 인코딩 시 약 4/3배)
 const MAX_TOTAL_BYTES = 22 * 1024 * 1024;
 const MAX_TOTAL_PAGES = 100;
-const SAMPLE_FILES = ['PID-100-001.pdf', 'PID-100-002.pdf'];
+const SAMPLE_FILES = ['PID-100-000.pdf', 'PID-100-001.pdf', 'PID-100-002.pdf'];
 
 const app = express();
 const upload = multer({

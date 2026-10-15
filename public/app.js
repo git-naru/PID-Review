@@ -149,7 +149,7 @@ async function loadDemo() {
     const result = await res.json();
     const sources = await Promise.all(result.sampleUrls.map(async (u) => (await fetch(u)).arrayBuffer()));
     applyResult(result, sources);
-    toast('샘플 도면 2장(PID-100-001, 002)에 대한 데모 결과입니다.\n검토 필요 항목을 더블클릭해 도면 위치를 확인해 보세요.');
+    toast('샘플 범례(PID-100-000) + P&ID 2장(PID-100-001, 002)에 대한 데모 결과입니다.\n검토 필요 항목을 더블클릭해 도면 위치를 확인해 보세요.');
   } catch (err) {
     toast(err.message, true);
   } finally {
@@ -185,6 +185,7 @@ function applyResult(result, sources) {
     ['설비', s.equipment], ['배관', s.lines], ['계기', s.instruments], ['밸브', s.valves],
   ].map(([k, v]) => `<span class="stat">${k}<b>${v}</b></span>`).join('')
     + `<span class="stat high">검토 높음<b>${s.issues.high}</b></span><span class="stat medium">중간<b>${s.issues.medium}</b></span><span class="stat">낮음<b>${s.issues.low}</b></span>`
+    + (result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
     + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '');
   $('#btnExport').disabled = false;
 
@@ -194,6 +195,7 @@ function applyResult(result, sources) {
   $('#cntEquipment').textContent = equipmentRows().length;
   $('#cntLines').textContent = lineRows().length;
   $('#cntInstruments').textContent = instrumentRows().length;
+  $('#cntLegend').textContent = legendRows().length;
 
   renderFlow();
   renderList();
@@ -206,7 +208,8 @@ function pagesOf(result) {
   result.files.forEach((f) => {
     for (let p = 1; p <= f.pageCount; p++) {
       const d = result.drawings.find((x) => x.file_index === f.index && x.page === p);
-      out.push({ key: `${f.index}:${p}`, label: d?.drawing_no ? `${d.drawing_no}${d.title ? ` - ${d.title}` : ''}` : `${f.name} p.${p}` });
+      const legendTag = d?.sheet_type === 'legend' ? ' (범례)' : '';
+      out.push({ key: `${f.index}:${p}`, label: (d?.drawing_no ? `${d.drawing_no}${d.title ? ` - ${d.title}` : ''}` : `${f.name} p.${p}`) + legendTag });
     }
   });
   return out;
@@ -400,6 +403,7 @@ function renderDetail() {
   }
   if (sel.type === 'node') box.innerHTML = nodeDetail(nodeById(sel.id));
   else if (sel.type === 'line') box.innerHTML = lineDetail(lineById(sel.id));
+  else if (sel.type === 'legend') box.innerHTML = legendDetail(legendById(sel.id));
   else box.innerHTML = issueDetail(issueById(sel.id));
 
   box.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', () => {
@@ -407,7 +411,7 @@ function renderDetail() {
     select({ type, id: rest.join(':') });
   }));
   box.querySelector('[data-view]')?.addEventListener('click', () => {
-    const item = sel.type === 'node' ? nodeById(sel.id) : sel.type === 'line' ? lineById(sel.id) : issueById(sel.id);
+    const item = sel.type === 'node' ? nodeById(sel.id) : sel.type === 'line' ? lineById(sel.id) : sel.type === 'legend' ? legendById(sel.id) : issueById(sel.id);
     openViewer(viewTarget(item, sel.type));
   });
 }
@@ -457,8 +461,8 @@ function lineDetail(l) {
       <tr><th>To</th><td>${goNode(l.to_id)}</td></tr>
       ${l.kind === 'signal' ? '' : `
       <tr><th>관경</th><td>${missing(l.size)}</td></tr>
-      <tr><th>유체 코드</th><td>${esc(l.fluid_code) || '-'}</td></tr>
-      <tr><th>Spec/Class</th><td>${missing(l.spec_class)}</td></tr>
+      <tr><th>유체 코드</th><td>${esc(l.fluid_code) || '-'}${l.fluid_desc ? ` <span class="muted">${esc(l.fluid_desc)}</span>` : ''}</td></tr>
+      <tr><th>Spec/Class</th><td>${missing(l.spec_class)}${l.class_desc ? `<br><span class="muted">${esc(l.class_desc)}</span>` : ''}</td></tr>
       <tr><th>보온/보냉</th><td>${esc(l.insulation) || '-'}</td></tr>`}
       <tr><th>도면</th><td>${locText(l.loc)}</td></tr>
       <tr><th>판독 신뢰도</th><td>${CONF_LABEL[l.confidence] || l.confidence}</td></tr>
@@ -467,6 +471,19 @@ function lineDetail(l) {
     ${l.inline_items.length ? `<h4>설치 계기·밸브</h4><ul>${l.inline_items.map((t) => { const n = state.result.nodes.find((x) => x.tag.toUpperCase() === t.toUpperCase()); return `<li>${n ? goNode(n.id) : esc(t)}</li>`; }).join('')}</ul>` : ''}
     ${issuesBlock(l.issue_ids)}
     <div class="actions-row"><button class="btn small primary" data-view>도면에서 위치 보기</button></div>`;
+}
+
+function legendDetail(e) {
+  if (!e) return '<p class="muted">항목을 찾을 수 없습니다.</p>';
+  const up = (v) => String(v || '').toUpperCase();
+  const users = e.section === '배관 Class' ? lineRows().filter((l) => up(l.spec_class) === up(e.code))
+    : e.section === '유체 코드' ? lineRows().filter((l) => up(l.fluid_code) === up(e.code)) : [];
+  return `
+    <span class="badge">범례 · ${esc(e.section)}</span>
+    <h3 style="margin-top:6px">${esc(e.code)}</h3>
+    <p>${esc(e.description)}</p>
+    ${users.length ? `<h4>적용 라인 (${users.length})</h4><ul>${users.map((l) => `<li>${goLine(l)} <span class="muted">${esc(l.size)}</span></li>`).join('')}</ul>` : ''}
+    <div class="actions-row"><button class="btn small primary" data-view>범례 시트에서 보기</button></div>`;
 }
 
 function issueDetail(i) {
@@ -525,7 +542,7 @@ const LIST_DEFS = {
     rows: lineRows,
     cols: [['No', 44], ['Line No.', 150], ['관경', 64], ['유체', 64], ['Spec', 70], ['From', 110], ['To', 110], ['구분', 70], ['도면', 110], ['검토', 52]],
     cells: (l, i) => [i + 1, `<span class="tag">${esc(l.line_no) || '<span class="warn">번호 없음</span>'}</span>`, esc(l.size) || '<span class="warn">-</span>', esc(l.fluid_code), esc(l.spec_class) || '<span class="warn">-</span>', esc(nodeName(l.from_id)) || '<span class="warn">미연결</span>', esc(nodeName(l.to_id)) || '<span class="warn">미연결</span>', KIND_LABEL[l.kind], esc(drawingLabel(l.loc)), l.issue_ids.length ? `<span class="warn">⚠ ${l.issue_ids.length}</span>` : ''],
-    title: (l) => l.service,
+    title: (l) => [l.service, l.class_desc && `Class ${l.spec_class}: ${l.class_desc}`].filter(Boolean).join('\n'),
     type: 'line',
     search: (l) => `${l.line_no} ${l.service} ${nodeName(l.from_id)} ${nodeName(l.to_id)} ${l.spec_class}`,
   },
@@ -537,7 +554,45 @@ const LIST_DEFS = {
     type: 'node',
     search: (n) => `${n.tag} ${n.name} ${n.equipment_type}`,
   },
+  legend: {
+    rows: legendRows,
+    cols: [['No', 44], ['구분', 120], ['코드', 130], ['설명', null], ['적용', 64]],
+    cells: (e, i) => [i + 1, esc(e.section), `<span class="tag">${esc(e.code)}</span>`, esc(e.description), e.used === null ? '' : e.used ? `${e.used}건` : '<span class="muted">0</span>'],
+    title: (e) => e.description,
+    type: 'legend',
+    search: (e) => `${e.section} ${e.code} ${e.description}`,
+  },
 };
+
+const LEGEND_SECTIONS = [
+  ['fluid_codes', '유체 코드'], ['piping_classes', '배관 Class'], ['equipment_codes', '설비 구분'],
+  ['instrument_letters', '계기 식별 문자'], ['symbols', '기호'],
+];
+
+/** 범례 탭 행: 범례 항목 + 실제 도면에서 사용된 건수 */
+function legendRows() {
+  const lg = state.result?.legend;
+  if (!lg?.found) return [];
+  const up = (v) => String(v || '').toUpperCase();
+  const lines = lineRows();
+  const usedCount = (key, code) => {
+    if (key === 'fluid_codes') return lines.filter((l) => up(l.fluid_code) === up(code)).length;
+    if (key === 'piping_classes') return lines.filter((l) => up(l.spec_class) === up(code)).length;
+    if (key === 'equipment_codes') return equipmentRows().filter((n) => (up(n.tag).match(/^[A-Z]+/) || [''])[0] === up(code)).length;
+    return null;
+  };
+  const rows = [];
+  if (lg.line_number_format) rows.push({ id: 'lg:format', section: '라인 번호 체계', code: '-', description: lg.line_number_format, used: null, loc: lg.pages[0] ? { ...lg.pages[0], bbox: null, source: 'none' } : null });
+  for (const [key, section] of LEGEND_SECTIONS) {
+    lg[key].forEach((e, i) => rows.push({
+      id: `lg:${key}:${i}`, section, used: usedCount(key, e.code), loc: e.loc, description: e.description,
+      code: key === 'instrument_letters' && e.code.startsWith('+') ? `${e.code.slice(1)} (후속 문자)` : e.code,
+    }));
+  }
+  if (lg.notes) rows.push({ id: 'lg:notes', section: '일반 노트', code: '-', description: lg.notes, used: null, loc: lg.pages[0] ? { ...lg.pages[0], bbox: null, source: 'none' } : null });
+  return rows.map((r) => ({ ...r, issue_ids: [] }));
+}
+const legendById = (id) => legendRows().find((r) => r.id === id);
 
 function renderList() {
   const def = LIST_DEFS[state.tab];
@@ -592,7 +647,7 @@ function bindRows(tbody) {
     const { type, id } = tr.dataset;
     tr.addEventListener('click', () => select({ type, id }));
     tr.addEventListener('dblclick', () => {
-      const item = type === 'node' ? nodeById(id) : type === 'line' ? lineById(id) : issueById(id);
+      const item = type === 'node' ? nodeById(id) : type === 'line' ? lineById(id) : type === 'legend' ? legendById(id) : issueById(id);
       if (item) openViewer(viewTarget(item, type));
     });
   });
@@ -614,6 +669,7 @@ function viewTarget(item, type) {
     const n = nodeById(item.from_id) || nodeById(item.to_id);
     if (n?.loc?.bbox) loc = n.loc;
   }
+  if (type === 'legend') return { loc, title: `범례 · ${item.section} ${item.code}`, sub: item.description, wholeMsg: '범례 시트 전체를 표시합니다.' };
   const title = type === 'issue' ? item.title : type === 'line' ? (item.line_no || '(라인 번호 없음)') : `${item.tag || ''} ${item.name || ''}`.trim();
   const sub = type === 'issue' ? item.description : type === 'line' ? `${nodeName(item.from_id) || '?'} → ${nodeName(item.to_id) || '?'}` : CATEGORY_LABEL[item.category];
   return { loc, title, sub };
@@ -720,7 +776,7 @@ function focusViewer() {
   } else {
     viewer.cx = 0.5; viewer.cy = 0.5; viewer.span = 1;
     msg.hidden = false;
-    msg.textContent = '정확한 위치 정보가 없어 페이지 전체를 표시합니다.';
+    msg.textContent = viewer.target?.wholeMsg || '정확한 위치 정보가 없어 페이지 전체를 표시합니다.';
   }
 }
 
@@ -840,11 +896,13 @@ function exportData(kind) {
     rows = [['Tag', '명칭', '형식', 'Service', '사양', '도면', '페이지', '검토 항목']]
       .concat(equipmentRows().map((n) => [n.tag, n.name, n.equipment_type, n.service, specSummary(n), drawingLabel(n.loc), n.loc.page, n.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
   } else if (kind === 'lines') {
-    rows = [['Line No.', '관경', '유체', 'Spec/Class', '보온', 'Service', 'From', 'To', '구분', '설치 계기·밸브', '도면', '검토 항목']]
-      .concat(lineRows().map((l) => [l.line_no, l.size, l.fluid_code, l.spec_class, l.insulation, l.service, nodeName(l.from_id), nodeName(l.to_id), KIND_LABEL[l.kind], l.inline_items.join(' '), drawingLabel(l.loc), l.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
+    rows = [['Line No.', '관경', '유체', '유체 설명', 'Spec/Class', 'Class 설명(범례)', '보온', 'Service', 'From', 'To', '구분', '설치 계기·밸브', '도면', '검토 항목']]
+      .concat(lineRows().map((l) => [l.line_no, l.size, l.fluid_code, l.fluid_desc, l.spec_class, l.class_desc, l.insulation, l.service, nodeName(l.from_id), nodeName(l.to_id), KIND_LABEL[l.kind], l.inline_items.join(' '), drawingLabel(l.loc), l.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
   } else if (kind === 'instruments') {
     rows = [['Tag', '명칭', '구분', '형식', '설치 위치', '도면', '검토 항목']]
       .concat(instrumentRows().map((n) => [n.tag, n.name, CATEGORY_LABEL[n.category], n.equipment_type, installedOn(n), drawingLabel(n.loc), n.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
+  } else if (kind === 'legend') {
+    rows = [['구분', '코드', '설명', '적용 건수']].concat(legendRows().map((e) => [e.section, e.code, e.description, e.used ?? '']));
   } else {
     rows = [['ID', '심각도', '구분', '제목', '내용', '관련 항목', '도면', '검출']]
       .concat(r.issues.map((i) => [i.id, SEV_LABEL[i.severity], i.category_label, i.title, i.description, i.related_ids.map((id) => nodeName(id) || lineById(id)?.line_no || id).join(' '), drawingLabel(i.loc), i.source === 'model' ? 'AI 판독' : '규칙 검증']));

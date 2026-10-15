@@ -82,27 +82,37 @@ function clamp01(v) {
 
 /** 같은 기준선 위에서 인접한 텍스트 조각을 하나의 run으로 병합 */
 function mergeRuns(items) {
-  const horiz = items.filter((i) => !i.vertical).sort((a, b) => a.oy - b.oy || a.x0 - b.x0);
-  const vert = items.filter((i) => i.vertical).sort((a, b) => a.ox - b.ox || b.y1 - a.y1);
   const out = [];
-  const merge = (list, sameLine, gap) => {
-    let cur = null;
-    for (const it of list) {
-      if (cur && sameLine(cur, it) && gap(cur, it) < Math.max(cur.h, it.h) * 0.6) {
-        const spacer = gap(cur, it) > Math.max(cur.h, it.h) * 0.15 ? ' ' : '';
-        cur.str += spacer + it.str;
-        cur.x0 = Math.min(cur.x0, it.x0); cur.x1 = Math.max(cur.x1, it.x1);
-        cur.y0 = Math.min(cur.y0, it.y0); cur.y1 = Math.max(cur.y1, it.y1);
-        cur.last = it;
-      } else {
-        if (cur) out.push(cur);
-        cur = { ...it, last: it };
-      }
+  // base: 기준선 좌표, pos/end: 진행 방향 시작·끝 좌표 (세로 글자는 아래→위로 진행)
+  const merge = (list, base, pos, end) => {
+    // 1) 기준선이 거의 같은 조각끼리 묶고 2) 각 묶음을 진행 방향 순으로 정렬
+    const groups = [];
+    for (const it of [...list].sort((a, b) => base(a) - base(b))) {
+      const g = groups[groups.length - 1];
+      if (g && Math.abs(base(it) - g.base) < Math.max(g.h, it.h) * 0.3) g.items.push(it);
+      else groups.push({ base: base(it), h: it.h, items: [it] });
     }
-    if (cur) out.push(cur);
+    for (const g of groups) {
+      let cur = null;
+      for (const it of g.items.sort((a, b) => pos(a) - pos(b))) {
+        const h = cur ? Math.max(cur.h, it.h) : it.h;
+        const gap = cur ? pos(it) - end(cur.last) : Infinity;
+        // 앞 조각 바로 뒤에 이어지는 경우만 병합 (겹침은 약간만 허용)
+        if (cur && gap > -h * 0.3 && gap < h * 0.6) {
+          cur.str += (gap > h * 0.15 ? ' ' : '') + it.str;
+          cur.x0 = Math.min(cur.x0, it.x0); cur.x1 = Math.max(cur.x1, it.x1);
+          cur.y0 = Math.min(cur.y0, it.y0); cur.y1 = Math.max(cur.y1, it.y1);
+          cur.last = it;
+        } else {
+          if (cur) out.push(cur);
+          cur = { ...it, last: it };
+        }
+      }
+      if (cur) out.push(cur);
+    }
   };
-  merge(horiz, (a, b) => Math.abs(a.last.oy - b.oy) < Math.max(a.h, b.h) * 0.3, (a, b) => b.x0 - a.last.x1);
-  merge(vert, (a, b) => Math.abs(a.last.ox - b.ox) < Math.max(a.h, b.h) * 0.3, (a, b) => a.last.y0 - b.y1);
+  merge(items.filter((i) => !i.vertical), (i) => i.oy, (i) => i.x0, (i) => i.x1);
+  merge(items.filter((i) => i.vertical), (i) => i.ox, (i) => -i.y1, (i) => -i.y0);
   return out;
 }
 

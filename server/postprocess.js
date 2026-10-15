@@ -19,8 +19,12 @@ const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
 export function postprocess(raw, files) {
   const drawings = arr(raw.drawings).map((d) => ({
     file_index: int(d.file_index), page: int(d.page, 1),
+    sheet_type: ['legend', 'pid', 'other'].includes(d.sheet_type) ? d.sheet_type : 'pid',
     drawing_no: s(d.drawing_no), title: s(d.title), revision: s(d.revision),
   }));
+  const legend = normLegend(raw.legend, drawings, files);
+  // 범례 시트의 예시 태그/라인 번호를 실제 항목 위치로 오인하지 않도록 검색에서 제외
+  const legendPages = new Set(legend.pages.map((p) => `${p.file_index}:${p.page}`));
 
   // ---- 노드 정규화 & id 중복 제거
   const usedIds = new Set();
@@ -101,8 +105,12 @@ export function postprocess(raw, files) {
   });
 
   // ---- 위치 보정 (텍스트 레이어에서 태그 검색)
-  for (const n of nodes) locate(n, [n.tag, n.name, n.offpage_ref, n._origId], files);
-  for (const l of lines) locate(l, [l.line_no], files);
+  for (const n of nodes) locate(n, [n.tag, n.name, n.offpage_ref, n._origId], files, legendPages);
+  for (const l of lines) locate(l, [l.line_no], files, legendPages);
+  for (const l of lines) {
+    l.fluid_desc = lookup(legend.fluid_codes, l.fluid_code);
+    l.class_desc = lookup(legend.piping_classes, l.spec_class);
+  }
 
   // ---- 규칙 기반 검증
   const degree = new Map(nodes.map((n) => [n.id, { process: 0, utility: 0, signal: 0 }]));
@@ -217,7 +225,9 @@ export function postprocess(raw, files) {
     }
   }
 
-  const links = pairOffpages(nodes, lines, drawings, ruleIssues);
+  checkAgainstLegend(legend, nodes, lines, ruleIssues);
+
+  const links = pairOffpages(nodes, lines, drawings.filter((d) => d.sheet_type !== 'legend'), ruleIssues);
 
   // ---- 이슈 병합 (모델 이슈 우선, 같은 카테고리/대상의 규칙 이슈는 생략)
   const modelIssues = arr(raw.issues).map((x) => ({
@@ -249,6 +259,7 @@ export function postprocess(raw, files) {
 
   return {
     summary: s(raw.summary),
+    legend,
     drawings,
     files: files.map((f, i) => ({ index: i, name: f.name, pageCount: f.text.pageCount, hasTextLayer: f.text.pages.some((p) => p.runs.length > 0) })),
     nodes,
@@ -310,13 +321,14 @@ function pairOffpages(nodes, lines, drawings, ruleIssues) {
   return links;
 }
 
-function locate(item, candidates, files) {
+function locate(item, candidates, files, skipPages) {
   const f = files[item.loc.file_index];
   const searchFiles = f ? [[item.loc.file_index, f], ...files.map((x, i) => [i, x]).filter(([i]) => i !== item.loc.file_index)] : files.map((x, i) => [i, x]);
   for (const text of candidates) {
     if (!text || normalizeTag(text).length < 3) continue;
     for (const [fi, file] of searchFiles) {
-      const hit = findTagOnPages(text, file.text.pages, fi === item.loc.file_index ? item.loc.page : 1);
+      const pages = file.text.pages.filter((p) => !skipPages.has(`${fi}:${p.page}`));
+      const hit = findTagOnPages(text, pages, fi === item.loc.file_index ? item.loc.page : 1);
       if (hit) {
         item.loc = { file_index: fi, page: hit.page, bbox: hit.bbox.map(round4), source: 'text' };
         return;
@@ -324,6 +336,116 @@ function locate(item, candidates, files) {
     }
   }
   if (item.loc.bbox) item.loc.source = 'model';
+}
+
+function normLegend(lg, drawings, files) {
+  const table = (v) => arr(v).map((x) => ({ code: s(x.code), description: s(x.description) })).filter((x) => x.code || x.description);
+  const pages = new Map();
+  for (const p of arr(lg?.pages)) {
+    const fi = int(p.file_index), pg = int(p.page, 1);
+    if (files[fi] && pg >= 1 && pg <= files[fi].text.pageCount) pages.set(`${fi}:${pg}`, { file_index: fi, page: pg });
+  }
+  for (const d of drawings) if (d.sheet_type === 'legend') pages.set(`${d.file_index}:${d.page}`, { file_index: d.file_index, page: d.page });
+  const legend = {
+    found: Boolean(lg?.found) || pages.size > 0,
+    pages: [...pages.values()],
+    line_number_format: s(lg?.line_number_format),
+    fluid_codes: table(lg?.fluid_codes),
+    piping_classes: table(lg?.piping_classes),
+    equipment_codes: table(lg?.equipment_codes),
+    instrument_letters: table(lg?.instrument_letters),
+    symbols: table(lg?.symbols),
+    notes: s(lg?.notes),
+  };
+  // 범례 항목을 범례 시트에서 찾아 위치 지정 (설명 문구 → 코드 순으로 검색)
+  const first = legend.pages[0];
+  for (const key of ['fluid_codes', 'piping_classes', 'equipment_codes', 'instrument_letters', 'symbols']) {
+    for (const e of legend[key]) {
+      e.loc = first ? { file_index: first.file_index, page: first.page, bbox: null, source: 'none' } : null;
+      if (!first) continue;
+      for (const text of [e.description, e.code.replace(/^\+/, '')]) {
+        const hit = legend.pages.map((p) => {
+          const pg = files[p.file_index].text.pages.find((x) => x.page === p.page);
+          const h = pg && findTagOnPages(text, [pg], p.page);
+          return h && { file_index: p.file_index, page: h.page, bbox: h.bbox.map(round4), source: 'text' };
+        }).find(Boolean);
+        if (hit) { e.loc = hit; break; }
+      }
+    }
+  }
+  return legend;
+}
+
+const lookup = (table, code) => {
+  const key = normalizeTag(code);
+  return key ? table.find((x) => normalizeTag(x.code) === key)?.description || '' : '';
+};
+
+/** 범례에 정의된 체계와 도면 표기가 맞는지 검사 */
+function checkAgainstLegend(legend, nodes, lines, ruleIssues) {
+  if (!legend.found) {
+    ruleIssues.push({
+      severity: 'low', category: 'other',
+      title: '범례(Legend) 시트 미입력',
+      description: '입력된 PDF에서 범례 시트를 찾지 못해 유체 코드·배관 Class·기호를 일반 관례로 해석했습니다. 범례 시트를 함께 입력하면 판독 정확도와 검증 범위가 높아집니다.',
+      related_ids: [],
+    });
+    return;
+  }
+  const process = lines.filter((l) => l.kind !== 'signal');
+  if (legend.piping_classes.length) {
+    for (const l of process) {
+      if (l.spec_class && !l.class_desc) {
+        ruleIssues.push({
+          severity: 'medium', category: 'inconsistent',
+          title: `범례에 없는 배관 Class (${l.spec_class})`,
+          description: `${label(l)}의 배관 Class "${l.spec_class}"가 범례에 정의되어 있지 않습니다 (정의된 Class: ${legend.piping_classes.map((x) => x.code).join(', ')}). 재질·Rating을 확정할 수 없어 배관 단가 적용이 불가합니다.`,
+          related_ids: [l.id],
+        });
+      }
+    }
+  }
+  if (legend.fluid_codes.length) {
+    for (const l of process) {
+      if (l.fluid_code && !l.fluid_desc) {
+        ruleIssues.push({
+          severity: 'medium', category: 'inconsistent',
+          title: `범례에 없는 유체 코드 (${l.fluid_code})`,
+          description: `${label(l)}의 유체 코드 "${l.fluid_code}"가 범례에 정의되어 있지 않습니다.`,
+          related_ids: [l.id],
+        });
+      }
+    }
+  }
+  const prefixOf = (tag) => (normalizeTag(tag).match(/^[A-Z]+/) || [''])[0];
+  if (legend.equipment_codes.length) {
+    const codes = new Set(legend.equipment_codes.map((x) => normalizeTag(x.code)));
+    for (const n of nodes) {
+      const pre = prefixOf(n.tag);
+      if (n.category === 'equipment' && pre && !codes.has(pre)) {
+        ruleIssues.push({
+          severity: 'low', category: 'inconsistent',
+          title: `범례에 없는 설비 Tag 체계 (${n.tag})`,
+          description: `${nodeLabel(n)}의 Tag 접두어 "${pre}"가 범례의 설비 구분에 없습니다. 설비 분류를 확인하세요.`,
+          related_ids: [n.id],
+        });
+      }
+    }
+  }
+  const firstLetters = new Set(legend.instrument_letters.map((x) => normalizeTag(x.code)).filter((c) => /^[A-Z]$/.test(c)));
+  if (firstLetters.size) {
+    for (const n of nodes) {
+      const first = prefixOf(n.tag).charAt(0);
+      if (n.category === 'instrument' && first && !firstLetters.has(first)) {
+        ruleIssues.push({
+          severity: 'low', category: 'inconsistent',
+          title: `범례에 없는 계기 측정변수 (${n.tag})`,
+          description: `${nodeLabel(n)}의 첫 문자 "${first}"가 범례의 계기 식별 문자에 정의되어 있지 않습니다.`,
+          related_ids: [n.id],
+        });
+      }
+    }
+  }
 }
 
 function normLoc(loc, files) {
