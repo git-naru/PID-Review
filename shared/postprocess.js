@@ -1,5 +1,5 @@
 // Claude 분석 결과 정규화 + 텍스트 레이어 기반 위치 보정 + 규칙 기반 검증.
-import { normalizeTag, findTagOnPages, findAllTagBoxes } from './pdfText.js';
+import { normalizeTag, findTagOnPages, findAllTagBoxes } from './pidText.js';
 
 export const ISSUE_CATEGORY_LABELS = {
   unconnected: '미연결',

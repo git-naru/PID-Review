@@ -11,6 +11,26 @@ PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설�
 
 ## 실행
 
+실행 방법은 두 가지입니다.
+
+### 1. claude.ai 아티팩트 (API 키 불필요)
+
+`npm run build:artifact`로 만든 `dist/artifact/`를 claude.ai 아티팩트로 올리면, 별도 서버 없이 브라우저에서 동작합니다. 분석은 **페이지를 연 사람의 claude.ai 계정 Claude**로 실행되므로 API 키나 추가 결제가 필요 없고, 요금제 사용량에 포함됩니다. 처음 분석할 때 Claude 사용 허용을 한 번 묻습니다.
+
+브라우저 분석은 Claude 호출을 단계별로 나눕니다(`public/engine.js`).
+1. pdf.js로 텍스트 레이어를 추출하고 페이지 이미지를 렌더링합니다. 이미지는 전체 1장과 겹치게 자른 4분할입니다.
+2. 시트 종류(범례/P&ID)를 분류합니다.
+3. 범례 시트를 읽습니다.
+4. P&ID 시트마다 따로 판독합니다. 시트당 1~3분 걸릴 수 있습니다.
+5. 결과를 병합한 뒤 서버와 같은 후처리(`shared/postprocess.js`)를 거칩니다.
+
+아티팩트는 다음 runtime capability를 선언해야 합니다.
+- `sample: {images: true}`: Claude 호출, 이미지 포함
+- `downloads`: CSV/JSON 저장
+
+### 2. 로컬 서버 (Anthropic API 키 사용)
+
+
 ```bash
 npm install
 export ANTHROPIC_API_KEY=sk-ant-...   # Claude API 키
@@ -51,10 +71,13 @@ API 키가 없어도 **샘플 데모** 버튼으로 전체 기능을 확인할 �
 ```bash
 npm test          # 텍스트 위치 검색 및 검증 로직 테스트 (샘플 도면 사용)
 npm run sample    # 샘플 P&ID PDF 재생성 (Python + reportlab 필요)
+npm run build:artifact   # claude.ai 아티팩트 번들 생성 (dist/artifact)
 ```
 
 ```
-server/   index.js(API·정적 파일) · analyzer.js(Claude 호출) · pdfText.js(텍스트/좌표) · postprocess.js(검증)
-public/   index.html · app.js(Flow·리스트·도면 뷰어) · styles.css
+server/   index.js(API·정적 파일) · analyzer.js(Claude API 호출) · pdfText.js(Node용 pdf.js 래퍼)
+shared/   pidText.js(텍스트/좌표) · postprocess.js(검증) · prompts.js(판독 지침) — 서버·브라우저 공용
+public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아티팩트용 브라우저 분석) · styles.css
+scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact)
 samples/  샘플 범례 1장 + P&ID 2장(의도적 결함 포함) · demo-analysis.json
 ```
