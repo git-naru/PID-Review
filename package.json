@@ -7,7 +7,8 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node --test test/*.test.js",
-    "sample": "python3 samples/make_sample_pid.py"
+    "sample": "python3 samples/make_sample_pid.py",
+    "build:artifact": "node scripts/build-artifact.mjs"
   },
   "repository": {
     "type": "git",

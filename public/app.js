@@ -1,6 +1,11 @@
-import * as pdfjsLib from '/vendor/pdf.min.mjs';
+import * as pdfjsLib from './vendor/pdf.min.mjs';
+import { analyzeInBrowser } from './engine.js';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
+
+// 실행 환경: 로컬 서버(Node, API 키 사용) 또는 claude.ai 아티팩트(사용자 계정의 Claude 사용)
+const IN_ARTIFACT = Boolean(window.claude);
+const runtime = { sample: null, downloads: null, abort: null };
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,10 +33,25 @@ async function init() {
   bindLists();
   bindViewer();
   bindFlowToolbar();
+  $('#btnStop').addEventListener('click', () => runtime.abort?.abort());
+  const n = $('#apiNotice');
+  if (IN_ARTIFACT) {
+    [runtime.sample, runtime.downloads] = await Promise.all([
+      window.claude.use('sample').catch(() => null),
+      window.claude.use('downloads').catch(() => null),
+    ]);
+    n.hidden = false;
+    if (runtime.sample) {
+      n.className = 'notice info';
+      n.textContent = '분석은 지금 로그인한 claude.ai 계정의 Claude로 실행됩니다. API 키나 추가 결제가 필요 없고, 요금제 사용량에 포함됩니다. 처음 분석할 때 Claude 사용 허용을 묻습니다.';
+    } else {
+      n.textContent = '이 화면에서는 Claude 분석을 사용할 수 없습니다. claude.ai에 로그인한 상태에서 이 페이지를 열어 주세요. "샘플 데모"는 그대로 볼 수 있습니다.';
+    }
+    return;
+  }
   try {
-    const st = await (await fetch('/api/status')).json();
+    const st = await (await fetch('api/status')).json();
     if (!st.apiConfigured) {
-      const n = $('#apiNotice');
       n.hidden = false;
       n.textContent = '서버에 ANTHROPIC_API_KEY가 설정되지 않아 실제 도면 분석은 할 수 없습니다. "샘플 데모"로 기능을 먼저 확인하거나, 키를 설정한 뒤 서버를 다시 시작하세요.';
     }
@@ -92,6 +112,7 @@ function renderChips() {
 }
 
 async function analyze() {
+  if (IN_ARTIFACT) return analyzeWithAccount();
   const files = [...state.pending];
   if (!files.length) return;
   const fd = new FormData();
@@ -100,7 +121,7 @@ async function analyze() {
   const started = Date.now();
   const timer = setInterval(() => { $('#progressTime').textContent = `${Math.round((Date.now() - started) / 1000)}초 경과`; }, 1000);
   try {
-    const res = await fetch('/api/analyze', { method: 'POST', body: fd });
+    const res = await fetch('api/analyze', { method: 'POST', body: fd });
     if (!res.ok || !res.body) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || `서버 오류 (${res.status})`);
@@ -141,10 +162,48 @@ async function analyze() {
   }
 }
 
+/** claude.ai 아티팩트: 브라우저에서 사용자 계정의 Claude로 분석 */
+async function analyzeWithAccount() {
+  const files = [...state.pending];
+  if (!files.length) return;
+  if (!runtime.sample) {
+    toast('이 화면에서는 Claude 분석을 사용할 수 없습니다. claude.ai에 로그인한 상태에서 열어 주세요.', true);
+    return;
+  }
+  const total = files.reduce((a, f) => a + f.size, 0);
+  if (total > 60 * 1048576) {
+    toast(`PDF 총 용량이 ${(total / 1048576).toFixed(1)}MB입니다. 60MB 이하로 나누어 분석해 주세요.`, true);
+    return;
+  }
+  runtime.abort = new AbortController();
+  setBusy(true, 'PDF를 여는 중...', true);
+  const started = Date.now();
+  const timer = setInterval(() => { $('#progressTime').textContent = `${Math.round((Date.now() - started) / 1000)}초 경과`; }, 1000);
+  try {
+    const sources = await Promise.all(files.map((f) => f.arrayBuffer()));
+    const result = await analyzeInBrowser({
+      files: files.map((f, i) => ({ name: f.name, buffer: sources[i] })),
+      sample: runtime.sample,
+      pdfjs: pdfjsLib,
+      signal: runtime.abort.signal,
+      onProgress: (msg) => { $('#progressText').textContent = msg; },
+    });
+    state.pending = [];
+    renderChips();
+    applyResult(result, sources);
+  } catch (err) {
+    toast(err.message, err.code !== 'cancelled');
+  } finally {
+    clearInterval(timer);
+    runtime.abort = null;
+    setBusy(false);
+  }
+}
+
 async function loadDemo() {
   setBusy(true, '샘플 도면과 분석 결과를 불러오는 중...');
   try {
-    const res = await fetch('/api/demo');
+    const res = await fetch(IN_ARTIFACT ? 'demo-result.json' : 'api/demo');
     if (!res.ok) throw new Error(`샘플 로드 실패 (${res.status})`);
     const result = await res.json();
     const sources = await Promise.all(result.sampleUrls.map(async (u) => (await fetch(u)).arrayBuffer()));
@@ -157,8 +216,9 @@ async function loadDemo() {
   }
 }
 
-function setBusy(busy, msg) {
+function setBusy(busy, msg, stoppable = false) {
   ['#btnPick', '#btnDemo'].forEach((s) => { $(s).disabled = busy; });
+  $('#btnStop').hidden = !(busy && stoppable);
   $('#btnAnalyze').disabled = busy || state.pending.length === 0;
   $('#statusBar').hidden = !busy && !state.result;
   $('#progress').hidden = !busy;
@@ -170,7 +230,7 @@ function setBusy(busy, msg) {
 
 // ------------------------------------------------------------------ 결과 반영
 function applyResult(result, sources) {
-  for (const d of state.pdfDocs.values()) d.then((doc) => doc.destroy()).catch(() => {});
+  for (const task of state.pdfDocs.values()) task.destroy();
   state.pdfDocs.clear();
   state.result = result;
   state.sources = sources;
@@ -339,39 +399,50 @@ const labelLines = (ele) => String(ele.data('label') || '').split('\n');
 const labelWidth = (charW, pad) => (ele) => Math.max(40, Math.min(170, Math.max(...labelLines(ele).map((l) => l.length)) * charW) + pad);
 const labelHeight = (lineH, pad) => (ele) => labelLines(ele).length * lineH + pad;
 
+/** 테마 토큰(CSS 변수)에서 Flow 색을 읽어 라이트/다크 모두 맞춘다 */
 function flowStyle() {
+  const cs = getComputedStyle(document.documentElement);
+  const t = (name) => cs.getPropertyValue(name).trim();
+  const [text, surface, muted, primary, primaryWeak, accent, medium, mediumWeak, high, highWeak, opc, opcWeak, line, utility, signal, border, surface2] =
+    ['--text', '--surface', '--muted', '--primary', '--primary-weak', '--accent', '--medium', '--medium-weak', '--high', '--high-weak',
+      '--opc', '--opc-weak', '--line', '--utility', '--signal', '--border', '--surface-2'].map(t);
+  const font = t('--font-body');
   return [
     { selector: 'node', style: {
       label: 'data(label)', 'text-wrap': 'wrap', 'text-valign': 'center', 'text-halign': 'center',
-      'font-size': 10, 'font-family': 'Pretendard, Noto Sans KR, Malgun Gothic, sans-serif', color: '#1f2933',
-      'background-color': '#fff', 'border-width': 2, 'border-color': '#6b7785', width: 34, height: 34,
+      'font-size': 10, 'font-family': font, color: text,
+      'background-color': surface, 'border-width': 2, 'border-color': muted, width: 34, height: 34,
     } },
     { selector: 'node.equipment', style: {
-      shape: 'round-rectangle', 'background-color': '#e8f0fe', 'border-color': '#1a56db', width: labelWidth(7, 24), height: labelHeight(13, 18),
+      shape: 'round-rectangle', 'background-color': primaryWeak, 'border-color': primary, width: labelWidth(7, 24), height: labelHeight(13, 18),
       padding: 0, 'font-size': 11, 'font-weight': 700, 'text-max-width': 140,
     } },
-    { selector: 'node.instrument', style: { shape: 'ellipse', 'border-color': '#0e9f6e', width: 46, height: 46, 'font-size': 9, 'text-max-width': 42 } },
-    { selector: 'node.valve', style: { shape: 'diamond', 'background-color': '#fff7e6', 'border-color': '#d97706', width: 54, height: 40, 'font-size': 9 } },
-    { selector: 'node.offpage', style: { shape: 'tag', 'background-color': '#fdf2f8', 'border-color': '#be185d', width: labelWidth(6.2, 26), height: 26, 'font-size': 9.5, 'font-weight': 700 } },
-    { selector: 'node.battery_limit', style: { shape: 'hexagon', 'background-color': '#f3f4f6', 'border-color': '#be185d', width: labelWidth(6.2, 26), height: 26, 'font-size': 9.5 } },
+    { selector: 'node.instrument', style: { shape: 'ellipse', 'border-color': accent, width: 46, height: 46, 'font-size': 9, 'text-max-width': 42 } },
+    { selector: 'node.valve', style: { shape: 'diamond', 'background-color': mediumWeak, 'border-color': medium, width: 54, height: 40, 'font-size': 9 } },
+    { selector: 'node.offpage', style: { shape: 'tag', 'background-color': opcWeak, 'border-color': opc, width: labelWidth(6.2, 26), height: 26, 'font-size': 9.5, 'font-weight': 700 } },
+    { selector: 'node.battery_limit', style: { shape: 'hexagon', 'background-color': surface2, 'border-color': opc, width: labelWidth(6.2, 26), height: 26, 'font-size': 9.5 } },
     { selector: 'node.other', style: { shape: 'round-rectangle', width: labelWidth(6, 16), height: 26 } },
-    { selector: 'node.unknown', style: { shape: 'ellipse', width: 22, height: 22, 'border-color': '#dc2626', 'border-style': 'dashed', color: '#dc2626', 'font-weight': 700, 'background-color': '#fde8e8' } },
-    { selector: 'node.flag', style: { 'border-color': '#dc2626', 'border-width': 3, 'underlay-color': '#dc2626', 'underlay-opacity': 0.12, 'underlay-padding': 6 } },
+    { selector: 'node.unknown', style: { shape: 'ellipse', width: 22, height: 22, 'border-color': high, 'border-style': 'dashed', color: high, 'font-weight': 700, 'background-color': highWeak } },
+    { selector: 'node.flag', style: { 'border-color': high, 'border-width': 3, 'underlay-color': high, 'underlay-opacity': 0.14, 'underlay-padding': 6 } },
     { selector: 'edge', style: {
-      width: 2, 'line-color': '#374151', 'target-arrow-color': '#374151', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9,
+      width: 2, 'line-color': line, 'target-arrow-color': line, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9,
       'curve-style': 'taxi', 'taxi-direction': 'rightward', 'taxi-turn': '50%',
-      label: 'data(label)', 'font-size': 9, 'text-background-color': '#fff', 'text-background-opacity': 0.9, 'text-background-padding': 2,
-      'text-rotation': 'none', color: '#374151',
+      label: 'data(label)', 'font-size': 9, 'font-family': font, 'text-background-color': surface, 'text-background-opacity': 0.9, 'text-background-padding': 2,
+      'text-rotation': 'none', color: text,
     } },
-    { selector: 'edge.utility', style: { 'line-color': '#2563eb', 'target-arrow-color': '#2563eb', 'line-style': 'dashed', width: 1.6, color: '#1d4ed8' } },
-    { selector: 'edge.signal', style: { 'line-color': '#9ca3af', 'target-arrow-shape': 'none', 'line-style': 'dotted', width: 1.2, 'curve-style': 'bezier' } },
-    { selector: 'edge.assoc', style: { 'line-color': '#cbd5e1', 'target-arrow-shape': 'none', 'line-style': 'dotted', width: 1.2, 'curve-style': 'bezier' } },
-    { selector: 'edge.link', style: { 'line-color': '#be185d', 'target-arrow-color': '#be185d', 'line-style': 'dashed', width: 2, color: '#be185d', 'curve-style': 'bezier' } },
-    { selector: 'edge.flag', style: { 'line-color': '#dc2626', 'target-arrow-color': '#dc2626', color: '#b91c1c' } },
-    { selector: ':selected', style: { 'overlay-color': '#1a56db', 'overlay-opacity': 0.18, 'overlay-padding': 6 } },
+    { selector: 'edge.utility', style: { 'line-color': utility, 'target-arrow-color': utility, 'line-style': 'dashed', width: 1.6, color: utility } },
+    { selector: 'edge.signal', style: { 'line-color': signal, 'target-arrow-shape': 'none', 'line-style': 'dotted', width: 1.2, 'curve-style': 'bezier' } },
+    { selector: 'edge.assoc', style: { 'line-color': border, 'target-arrow-shape': 'none', 'line-style': 'dotted', width: 1.2, 'curve-style': 'bezier' } },
+    { selector: 'edge.link', style: { 'line-color': opc, 'target-arrow-color': opc, 'line-style': 'dashed', width: 2, color: opc, 'curve-style': 'bezier' } },
+    { selector: 'edge.flag', style: { 'line-color': high, 'target-arrow-color': high, color: high } },
+    { selector: ':selected', style: { 'overlay-color': primary, 'overlay-opacity': 0.2, 'overlay-padding': 6 } },
     { selector: 'edge:selected', style: { width: 4 } },
   ];
 }
+
+// 테마가 바뀌면 Flow 색도 다시 적용
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => cy?.style(flowStyle()));
+new MutationObserver(() => cy?.style(flowStyle())).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 function highlightInFlow(ids, focus) {
   if (!cy) return;
@@ -733,9 +804,9 @@ function getPdf(fileIndex) {
     const src = state.sources[fileIndex];
     if (!src) return Promise.reject(new Error('원본 PDF를 찾을 수 없습니다.'));
     // pdf.js가 버퍼를 워커로 넘기므로 사본 전달
-    state.pdfDocs.set(fileIndex, pdfjsLib.getDocument({ data: src.slice(0) }).promise);
+    state.pdfDocs.set(fileIndex, pdfjsLib.getDocument({ data: src.slice(0) }));
   }
-  return state.pdfDocs.get(fileIndex);
+  return state.pdfDocs.get(fileIndex).promise;
 }
 
 async function openViewer(target) {
@@ -911,7 +982,20 @@ function exportData(kind) {
   download(`pid-${kind}-${stamp}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
 }
 
-function download(name, content, type) {
+async function download(name, content, type) {
+  if (IN_ARTIFACT) {
+    // 아티팩트 화면에서는 <a download>가 동작하지 않으므로 저장 기능을 사용
+    if (!runtime.downloads) {
+      toast('이 화면에서는 파일을 저장할 수 없습니다.', true);
+      return;
+    }
+    try {
+      await runtime.downloads.save({ filename: name, data: content });
+    } catch (e) {
+      if (e?.code !== 'declined' && e?.code !== 'cancelled') toast('파일을 저장하지 못했습니다.', true);
+    }
+    return;
+  }
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.append(a);

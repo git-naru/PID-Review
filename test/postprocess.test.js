@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractPdfText, findTagOnPages } from '../server/pdfText.js';
-import { postprocess } from '../server/postprocess.js';
+import { postprocess } from '../shared/postprocess.js';
 
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples');
 

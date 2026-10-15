@@ -1,6 +1,7 @@
 // Claude API를 이용한 P&ID 분석.
 import Anthropic from '@anthropic-ai/sdk';
 import { textLayerForPrompt } from './pdfText.js';
+import { ROLE, LEGEND_GUIDE, EXTRACTION_GUIDE, RULES } from '../shared/prompts.js';
 
 export const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5-5';
 const MAX_TOKENS = Number(process.env.CLAUDE_MAX_TOKENS || 64000);
@@ -133,45 +134,16 @@ export const ANALYSIS_SCHEMA = {
   },
 };
 
-const SYSTEM_PROMPT = `You are a senior process/piping engineer reviewing Piping & Instrument Diagrams (P&IDs).
-The extracted data will be used as input for CAPEX (investment cost) estimation, so completeness and
-correctness of equipment data and pipe line data matter most.
+const SYSTEM_PROMPT = `${ROLE}
 
 Your job:
-0. Find the legend sheets first. P&ID sets usually start with LEGEND / SYMBOLS / 범례 sheets that define the line
-   numbering system, fluid codes, piping classes, equipment tag prefixes, instrument identification letters, and the
-   symbols for lines, valves and instruments. Read them completely and fill "legend". Then interpret every other
-   sheet with those conventions:
-   - split each line number by the legend's format into size / fluid_code / spec_class / insulation;
-   - classify equipment by the tag prefix definitions, instruments by the identification letters;
-   - recognise valves, instruments, line types and connectors by the legend symbols, not by guesswork.
-   Legend sheets contain example tags and line numbers - never extract nodes or lines from legend sheets.
-   If no legend is provided, use common industry conventions (ISA 5.1 etc.), set legend.found=false, and lower the
-   confidence of items whose meaning depends on project-specific codes.
+0. Find the legend sheets first and fill "legend" from them (found=false when there is none).
+${LEGEND_GUIDE}
 1. Read every page of every uploaded P&ID. Identify drawing number, title, revision and sheet_type from the title block.
-2. Extract every node (P&ID sheets only):
-   - equipment (tanks, vessels, columns, pumps, compressors, heat exchangers, filters, packages...). Merge the
-     equipment data box / equipment list text into the matching equipment's specs. Spare pumps (A/B) are separate nodes.
-   - instruments (transmitters, indicators, controllers, switches) and valves of interest (control valves,
-     safety/relief valves, on-off valves with tags). Untagged manual block valves can be omitted.
-   - off-page connectors (category "offpage") and battery limit / utility headers like CWS, CWR, LPS (category "battery_limit").
-3. Extract every pipe line segment between nodes. Use the line number text written along the line. A line runs
-   from one node to another; tees/branches connect into another line - in that case set from/to to the node the
-   branch ultimately connects to on the flow path. Instrument signal/impulse lines are kind "signal" (instrument -> process node or valve).
-   Utility services (CW, steam, N2, IA...) are kind "utility".
-4. Report issues you observe directly on the drawing (Korean text): lines ending without a destination, equipment
-   with no connected line, missing line number / size / spec class, data box values inconsistent with the symbol
-   (e.g. tag mismatch), duplicated tags, off-page connectors whose referenced drawing is not among the uploaded files,
-   illegible text, flow direction contradictions, and anything that does not follow the legend (undefined piping class
-   or fluid code, line numbers not matching the numbering format, symbols not defined in the legend).
+2. ${EXTRACTION_GUIDE}
 
 Rules:
-- Never invent data. If a value is not on the drawing, use an empty string and (if it matters for cost) raise an issue.
-- Copy tags and line numbers exactly as written.
-- Coordinates: a text layer with normalized centre coordinates (0-1, origin top-left) is provided for each page.
-  Use it to place bbox precisely around the tag text or symbol. For scanned pages without text layer, estimate from the image.
-- "from_id"/"to_id" must be ids that exist in "nodes", or empty string.
-- Write summary, issue titles and descriptions in Korean. Keep tags, line numbers and spec values in the original language.`;
+${RULES}`;
 
 /**
  * @param {Array<{name:string, buffer:Buffer, text:object}>} files

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { extractPdfText } from './pdfText.js';
 import { analyzeWithClaude, AnalysisError, isApiConfigured, MODEL } from './analyzer.js';
-import { postprocess } from './postprocess.js';
+import { postprocess } from '../shared/postprocess.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 3000);
@@ -29,6 +29,7 @@ vendor('/vendor/cytoscape-dagre.js', 'cytoscape-dagre/dist/cytoscape-dagre.js');
 vendor('/vendor/pdf.min.mjs', 'pdfjs-dist/legacy/build/pdf.min.mjs');
 vendor('/vendor/pdf.worker.min.mjs', 'pdfjs-dist/legacy/build/pdf.worker.min.mjs');
 app.use('/samples', express.static(path.join(ROOT, 'samples'), { index: false }));
+app.use('/shared', express.static(path.join(ROOT, 'shared'), { index: false }));
 
 app.get('/api/status', (_req, res) => {
   res.json({ apiConfigured: isApiConfigured(), model: MODEL, limits: { maxTotalMB: MAX_TOTAL_BYTES / 1048576, maxPages: MAX_TOTAL_PAGES } });
@@ -43,7 +44,7 @@ app.get('/api/demo', async (_req, res, next) => {
       files.push({ name, text: await extractPdfText(buf) });
     }
     const raw = JSON.parse(await fs.readFile(path.join(ROOT, 'samples', 'demo-analysis.json'), 'utf8'));
-    res.json({ ...postprocess(raw, files), sampleUrls: SAMPLE_FILES.map((n) => `/samples/${n}`), meta: { demo: true } });
+    res.json({ ...postprocess(raw, files), sampleUrls: SAMPLE_FILES.map((n) => `samples/${n}`), meta: { demo: true } });
   } catch (err) {
     next(err);
   }

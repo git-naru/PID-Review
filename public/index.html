@@ -4,7 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>P&amp;ID Review</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <meta name="claude:viewport-fit-sides" content="cover" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
@@ -46,6 +50,7 @@
       <span class="spinner"></span>
       <span id="progressText">분석 중...</span>
       <span class="muted" id="progressTime"></span>
+      <button class="btn small" id="btnStop" type="button" hidden>중지</button>
     </div>
     <div class="summary" id="summary" hidden>
       <p id="summaryText"></p>
@@ -69,7 +74,7 @@
         <div class="empty" id="flowEmpty">
           <div class="empty-icon">⇄</div>
           <p><strong>PDF 입력</strong> 버튼으로 P&amp;ID를 선택하고 <strong>분석 시작</strong>을 누르세요.</p>
-          <p class="muted">API 키 없이 기능을 확인하려면 <strong>샘플 데모</strong>를 누르세요.</p>
+          <p class="muted">분석 전에 기능을 미리 보려면 <strong>샘플 데모</strong>를 누르세요.</p>
         </div>
         <ul class="legend">
           <li><i class="lg eq"></i>설비</li>
@@ -159,8 +164,8 @@
   <div class="drop-overlay" id="dropOverlay" hidden><div>PDF를 여기에 놓으세요</div></div>
   <div class="toast" id="toast" hidden></div>
 
-  <script src="/vendor/cytoscape.min.js"></script>
-  <script src="/vendor/cytoscape-dagre.js"></script>
-  <script type="module" src="/app.js"></script>
+  <script src="vendor/cytoscape.min.js"></script>
+  <script src="vendor/cytoscape-dagre.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
