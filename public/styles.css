@@ -253,3 +253,9 @@ button { font: inherit; }
 
 .btn:focus-visible, .tab:focus-visible, .sev-btn:focus-visible, .link:focus-visible, .grid tbody tr:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .progress #btnStop { margin-left: auto; }
+.statusbar { display: flex; flex-direction: column; gap: 8px; }
+.runbox { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; background: var(--primary-weak); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+.runbox.error { background: var(--high-weak); color: var(--text); border-color: color-mix(in srgb, var(--high) 35%, transparent); }
+.runbox span { min-width: 0; flex: 1 1 320px; }
+.tier { padding: 7px 8px; border-radius: 8px; border: 1px solid var(--nav-line); background: transparent; color: var(--nav-text); font: inherit; font-weight: 600; }
+.tier option { color: var(--text); background: var(--surface); }

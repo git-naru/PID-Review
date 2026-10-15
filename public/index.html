@@ -22,6 +22,10 @@
     <div class="actions">
       <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden />
       <button class="btn primary" id="btnPick" type="button">PDF 입력</button>
+      <select id="tierSelect" class="tier" title="판독 수준" hidden>
+        <option value="complex">정밀 판독</option>
+        <option value="default">빠른 판독</option>
+      </select>
       <button class="btn accent" id="btnAnalyze" type="button" disabled>분석 시작</button>
       <button class="btn ghost" id="btnDemo" type="button">샘플 데모</button>
       <div class="export">
@@ -51,6 +55,10 @@
       <span id="progressText">분석 중...</span>
       <span class="muted" id="progressTime"></span>
       <button class="btn small" id="btnStop" type="button" hidden>중지</button>
+    </div>
+    <div class="runbox" id="runBox" hidden>
+      <span id="runText"></span>
+      <button class="btn small primary" id="btnResume" type="button" hidden>이어서 분석</button>
     </div>
     <div class="summary" id="summary" hidden>
       <p id="summaryText"></p>

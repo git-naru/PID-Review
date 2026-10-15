@@ -34,6 +34,8 @@ async function init() {
   bindViewer();
   bindFlowToolbar();
   $('#btnStop').addEventListener('click', () => runtime.abort?.abort());
+  $('#btnResume').addEventListener('click', () => analyzeWithAccount(true));
+  $('#tierSelect').hidden = !IN_ARTIFACT;
   const n = $('#apiNotice');
   if (IN_ARTIFACT) {
     [runtime.sample, runtime.downloads] = await Promise.all([
@@ -163,8 +165,8 @@ async function analyze() {
 }
 
 /** claude.ai 아티팩트: 브라우저에서 사용자 계정의 Claude로 분석 */
-async function analyzeWithAccount() {
-  const files = [...state.pending];
+async function analyzeWithAccount(resume = false) {
+  const files = resume ? state.lastRun?.files || [] : [...state.pending];
   if (!files.length) return;
   if (!runtime.sample) {
     toast('이 화면에서는 Claude 분석을 사용할 수 없습니다. claude.ai에 로그인한 상태에서 열어 주세요.', true);
@@ -175,29 +177,53 @@ async function analyzeWithAccount() {
     toast(`PDF 총 용량이 ${(total / 1048576).toFixed(1)}MB입니다. 60MB 이하로 나누어 분석해 주세요.`, true);
     return;
   }
+  state.lastRun = { files };
+  showRunBox(null);
   runtime.abort = new AbortController();
   setBusy(true, 'PDF를 여는 중...', true);
   const started = Date.now();
   const timer = setInterval(() => { $('#progressTime').textContent = `${Math.round((Date.now() - started) / 1000)}초 경과`; }, 1000);
+  let sources = null;
   try {
-    const sources = await Promise.all(files.map((f) => f.arrayBuffer()));
+    sources = await Promise.all(files.map((f) => f.arrayBuffer()));
     const result = await analyzeInBrowser({
       files: files.map((f, i) => ({ name: f.name, buffer: sources[i] })),
       sample: runtime.sample,
       pdfjs: pdfjsLib,
+      tier: $('#tierSelect').value,
       signal: runtime.abort.signal,
       onProgress: (msg) => { $('#progressText').textContent = msg; },
+      onPartial: (partial) => applyResult(partial, sources),
     });
-    state.pending = [];
-    renderChips();
+    if (!resume) {
+      state.pending = [];
+      renderChips();
+    }
     applyResult(result, sources);
+    const p = result.meta.progress;
+    if (p.failed) showRunBox(`P&ID ${p.total}장 중 ${p.done}장을 판독했고 ${p.failed}장은 실패했습니다. 실패한 시트는 검토 항목에 표시되어 있습니다.`, '실패한 시트 다시 분석');
+    else toast(`P&ID ${p.total}장 판독을 마쳤습니다.`);
   } catch (err) {
-    toast(err.message, err.code !== 'cancelled');
+    if (err.partial) applyResult(err.partial, sources);
+    const canResume = err.code !== 'not_granted' && err.code !== 'sampling_disabled';
+    showRunBox(err.message, canResume && sources ? '이어서 분석' : null, err.code !== 'cancelled');
   } finally {
     clearInterval(timer);
     runtime.abort = null;
     setBusy(false);
   }
+}
+
+/** 분석이 멈추거나 일부 실패했을 때 남는 안내 (토스트와 달리 사라지지 않는다) */
+function showRunBox(message, actionLabel = null, isError = false) {
+  const box = $('#runBox');
+  box.hidden = !message;
+  if (!message) return;
+  box.classList.toggle('error', isError);
+  $('#runText').textContent = message;
+  $('#btnResume').hidden = !actionLabel;
+  $('#btnResume').textContent = actionLabel || '';
+  $('#statusBar').hidden = false;
 }
 
 async function loadDemo() {
@@ -217,10 +243,10 @@ async function loadDemo() {
 }
 
 function setBusy(busy, msg, stoppable = false) {
-  ['#btnPick', '#btnDemo'].forEach((s) => { $(s).disabled = busy; });
+  ['#btnPick', '#btnDemo', '#tierSelect', '#btnResume'].forEach((s) => { $(s).disabled = busy; });
   $('#btnStop').hidden = !(busy && stoppable);
   $('#btnAnalyze').disabled = busy || state.pending.length === 0;
-  $('#statusBar').hidden = !busy && !state.result;
+  $('#statusBar').hidden = !busy && !state.result && $('#runBox').hidden;
   $('#progress').hidden = !busy;
   if (busy) {
     $('#progressText').textContent = msg;
@@ -230,11 +256,23 @@ function setBusy(busy, msg, stoppable = false) {
 
 // ------------------------------------------------------------------ 결과 반영
 function applyResult(result, sources) {
-  for (const task of state.pdfDocs.values()) task.destroy();
-  state.pdfDocs.clear();
+  // 같은 파일의 중간 결과 갱신이면 열린 PDF와 선택 항목을 유지
+  const sameSources = sources === state.sources;
+  if (!sameSources) {
+    for (const task of state.pdfDocs.values()) task.destroy();
+    state.pdfDocs.clear();
+  }
+  const prevSel = state.selected;
+  const prevFilter = $('#drawingFilter').value;
   state.result = result;
   state.sources = sources;
   state.selected = null;
+  if (sameSources && prevSel) {
+    const exists = prevSel.type === 'node' ? result.nodes.some((n) => n.id === prevSel.id)
+      : prevSel.type === 'line' ? result.lines.some((l) => l.id === prevSel.id)
+        : prevSel.type === 'issue' ? result.issues.some((i) => i.id === prevSel.id) : true;
+    if (exists) state.selected = prevSel;
+  }
 
   $('#statusBar').hidden = false;
   $('#summary').hidden = false;
@@ -246,11 +284,14 @@ function applyResult(result, sources) {
   ].map(([k, v]) => `<span class="stat">${k}<b>${v}</b></span>`).join('')
     + `<span class="stat high">검토 높음<b>${s.issues.high}</b></span><span class="stat medium">중간<b>${s.issues.medium}</b></span><span class="stat">낮음<b>${s.issues.low}</b></span>`
     + (result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
-    + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '');
+    + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '')
+    + (result.meta?.progress && result.meta.progress.done < result.meta.progress.total
+      ? `<span class="stat medium">판독<b>${result.meta.progress.done}/${result.meta.progress.total}</b></span>` : '');
   $('#btnExport').disabled = false;
 
   const sel = $('#drawingFilter');
   sel.innerHTML = '<option value="all">전체 도면</option>' + pagesOf(result).map((p) => `<option value="${p.key}">${esc(p.label)}</option>`).join('');
+  if (sameSources && [...sel.options].some((o) => o.value === prevFilter)) sel.value = prevFilter;
 
   $('#cntEquipment').textContent = equipmentRows().length;
   $('#cntLines').textContent = lineRows().length;
