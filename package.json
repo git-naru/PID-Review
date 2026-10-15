@@ -1,0 +1,36 @@
+{
+  "name": "pid-review",
+  "version": "1.0.0",
+  "description": "P&ID PDF 분석 - 설비/배관 Flow, 설비 리스트, 미연결·오류 검출",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js",
+    "sample": "python3 samples/make_sample_pid.py"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git-naru/PID-Review.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/git-naru/PID-Review/issues"
+  },
+  "homepage": "https://github.com/git-naru/PID-Review#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
+    "cytoscape": "^3.34.3",
+    "cytoscape-dagre": "^4.0.1",
+    "express": "^5.3.0",
+    "multer": "^2.4.0",
+    "pdfjs-dist": "^6.4.299"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}
