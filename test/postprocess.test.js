@@ -104,3 +104,28 @@ test('잘못된 참조와 0-1000 스케일 bbox를 정규화한다', async () =>
   assert.ok(r.issues.some((i) => i.category === 'inconsistent' && i.title.includes('NOPE')));
   assert.ok(r.issues.some((i) => i.category === 'unconnected' && i.related_ids.includes('L1')));
 });
+
+test('PFD: 스트림 데이터를 유지하고 관경·Spec·범례 같은 P&ID 전용 검사는 하지 않는다', async () => {
+  const { files } = await loadSamples();
+  const r = postprocess({
+    doc_type: 'pfd', summary: '', drawings: [], legend: { found: false },
+    nodes: [
+      { id: 'A', tag: '', name: 'OP 1 - LIME SLAKER', category: 'equipment', specs: [], loc: { file_index: 1, page: 1, bbox: null } },
+      { id: 'B', tag: '', name: 'OP 1 - LIME AGING TANK', category: 'equipment', specs: [], loc: { file_index: 1, page: 1, bbox: null } },
+    ],
+    lines: [{ id: 'S-1201', line_no: '1201', kind: 'process', from_id: 'A', to_id: 'B', inline_items: [], specs: [{ name: 'Mass flow', value: '36.1 t/h' }], loc: { file_index: 1, page: 1, bbox: null } }],
+    issues: [],
+  }, files);
+  assert.equal(r.doc_type, 'pfd');
+  assert.deepEqual(r.lines[0].specs, [{ name: 'Mass flow', value: '36.1 t/h' }]);
+  assert.ok(!r.issues.some((i) => /관경|Spec|라인 번호|범례|사양 정보/.test(i.title)), r.issues.map((i) => i.title).join(', '));
+});
+
+test('같은 글자가 여러 곳에 있으면 모델이 짚은 위치에 가까운 쪽을 고른다', () => {
+  const pg = { page: 1, runs: [
+    { text: '1101', bbox: [0.30, 0.10, 0.32, 0.11], vertical: false }, // 도면 위 스트림 표식
+    { text: '1101', bbox: [0.10, 0.80, 0.12, 0.81], vertical: false }, // 물질수지표 머리글
+  ] };
+  assert.equal(findTagOnPages('1101', [pg], 1, [0.11, 0.8]).bbox[1], 0.80);
+  assert.equal(findTagOnPages('1101', [pg], 1, [0.31, 0.1]).bbox[1], 0.10);
+});

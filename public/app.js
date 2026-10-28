@@ -316,6 +316,7 @@ function applyResult(result, sources) {
 
   $('#cntEquipment').textContent = equipmentRows().length;
   $('#cntLines').textContent = lineRows().length;
+  $('.tab[data-tab="lines"]').firstChild.textContent = isPfd() ? '스트림 리스트 ' : '배관 리스트 ';
   $('#cntInstruments').textContent = instrumentRows().length;
   $('#cntLegend').textContent = legendRows().length;
 
@@ -378,7 +379,7 @@ function renderFlow() {
     if (!tgt) { tgt = `u:${l.id}:to`; els.push({ group: 'nodes', data: { id: tgt, ref: l.id, type: 'dangling', category: 'unknown', label: '?', page }, classes: 'unknown' }); }
     els.push({
       group: 'edges',
-      data: { id: `l:${l.id}`, ref: l.id, type: 'line', source: src, target: tgt, kind: l.kind, label: l.kind === 'signal' ? '' : (l.line_no || '(번호 없음)') },
+      data: { id: `l:${l.id}`, ref: l.id, type: 'line', source: src, target: tgt, kind: l.kind, label: l.kind === 'signal' ? '' : (l.line_no || (isPfd() ? '' : '(번호 없음)')) },
       classes: [l.kind, l.issue_ids.length ? 'flag' : ''].join(' '),
     });
   }
@@ -585,14 +586,15 @@ function nodeDetail(n) {
 function lineDetail(l) {
   if (!l) return '<p class="muted">항목을 찾을 수 없습니다.</p>';
   const missing = (v) => (v ? esc(v) : '<span style="color:var(--high)">미표기</span>');
+  const pfd = isPfd();
   return `
-    <span class="badge line">${KIND_LABEL[l.kind]} 배관</span>
-    <h3>${esc(l.line_no || '(라인 번호 없음)')}</h3>
+    <span class="badge line">${KIND_LABEL[l.kind]} ${pfd ? '스트림' : '배관'}</span>
+    <h3>${esc(l.line_no ? (pfd ? `스트림 ${l.line_no}` : l.line_no) : pfd ? '(번호 없는 연결)' : '(라인 번호 없음)')}</h3>
     <p class="sub">${esc(l.service)}</p>
     <table class="kv">
       <tr><th>From</th><td>${goNode(l.from_id)}</td></tr>
       <tr><th>To</th><td>${goNode(l.to_id)}</td></tr>
-      ${l.kind === 'signal' ? '' : `
+      ${l.kind === 'signal' || pfd ? '' : `
       <tr><th>관경</th><td>${missing(l.size)}</td></tr>
       <tr><th>유체 코드</th><td>${esc(l.fluid_code) || '-'}${l.fluid_desc ? ` <span class="muted">${esc(l.fluid_desc)}</span>` : ''}</td></tr>
       <tr><th>Spec/Class</th><td>${missing(l.spec_class)}${l.class_desc ? `<br><span class="muted">${esc(l.class_desc)}</span>` : ''}</td></tr>
@@ -601,6 +603,7 @@ function lineDetail(l) {
       <tr><th>판독 신뢰도</th><td>${CONF_LABEL[l.confidence] || l.confidence}</td></tr>
       ${l.note ? `<tr><th>비고</th><td>${esc(l.note)}</td></tr>` : ''}
     </table>
+    ${l.specs?.length ? `<h4>${pfd ? '스트림 데이터 (물질수지표)' : '라인 데이터'}</h4><table class="kv">${l.specs.map((x) => `<tr><th>${esc(x.name)}</th><td>${esc(x.value)}</td></tr>`).join('')}</table>` : ''}
     ${l.inline_items.length ? `<h4>설치 계기·밸브</h4><ul>${l.inline_items.map((t) => { const n = state.result.nodes.find((x) => x.tag.toUpperCase() === t.toUpperCase()); return `<li>${n ? goNode(n.id) : esc(t)}</li>`; }).join('')}</ul>` : ''}
     ${issuesBlock(l.issue_ids)}
     <div class="actions-row"><button class="btn small primary" data-view>도면에서 위치 보기</button></div>`;
@@ -697,6 +700,18 @@ const LIST_DEFS = {
   },
 };
 
+// PFD: 라인 대신 스트림 번호와 물질수지표 데이터
+const isPfd = () => state.result?.doc_type === 'pfd';
+const specSummaryShort = (x) => (x.specs || []).slice(0, 4).map((sp) => `${sp.name}: ${sp.value}`).join(' · ');
+const PFD_STREAMS_DEF = {
+  rows: () => lineRows(),
+  cols: [['No', 44], ['Stream', 80], ['Service', 220], ['From', 150], ['To', 150], ['스트림 데이터', null], ['도면', 110], ['검토', 52]],
+  cells: (l, i) => [i + 1, `<span class="tag">${esc(l.line_no) || '<span class="muted">-</span>'}</span>`, esc(l.service), esc(nodeName(l.from_id)) || '<span class="warn">미연결</span>', esc(nodeName(l.to_id)) || '<span class="warn">미연결</span>', esc(specSummaryShort(l)) || '<span class="muted">-</span>', esc(drawingLabel(l.loc)), l.issue_ids.length ? `<span class="warn">⚠ ${l.issue_ids.length}</span>` : ''],
+  title: (l) => (l.specs || []).map((sp) => `${sp.name}: ${sp.value}`).join('\n'),
+  type: 'line',
+  search: (l) => `${l.line_no} ${l.service} ${nodeName(l.from_id)} ${nodeName(l.to_id)}`,
+};
+
 const LEGEND_SECTIONS = [
   ['fluid_codes', '유체 코드'], ['piping_classes', '배관 Class'], ['equipment_codes', '설비 구분'],
   ['instrument_letters', '계기 식별 문자'], ['symbols', '기호'],
@@ -728,7 +743,7 @@ function legendRows() {
 const legendById = (id) => legendRows().find((r) => r.id === id);
 
 function renderList() {
-  const def = LIST_DEFS[state.tab];
+  const def = state.tab === 'lines' && isPfd() ? PFD_STREAMS_DEF : LIST_DEFS[state.tab];
   const q = $('#listSearch').value.trim().toUpperCase();
   const all = def.rows();
   const rows = q ? all.filter((r) => def.search(r).toUpperCase().includes(q)) : all;
@@ -1029,7 +1044,10 @@ function exportData(kind) {
     rows = [['Tag', '명칭', '형식', 'Service', '사양', '도면', '페이지', '검토 항목']]
       .concat(equipmentRows().map((n) => [n.tag, n.name, n.equipment_type, n.service, specSummary(n), drawingLabel(n.loc), n.loc.page, n.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
   } else if (kind === 'lines') {
-    rows = [['Line No.', '관경', '유체', '유체 설명', 'Spec/Class', 'Class 설명(범례)', '보온', 'Service', 'From', 'To', '구분', '설치 계기·밸브', '도면', '검토 항목']]
+    if (isPfd()) {
+      rows = [['Stream', 'Service', 'From', 'To', '구분', '스트림 데이터', '도면', '검토 항목']]
+        .concat(lineRows().map((l) => [l.line_no, l.service, nodeName(l.from_id), nodeName(l.to_id), KIND_LABEL[l.kind], specSummary(l), drawingLabel(l.loc), l.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
+    } else rows = [['Line No.', '관경', '유체', '유체 설명', 'Spec/Class', 'Class 설명(범례)', '보온', 'Service', 'From', 'To', '구분', '설치 계기·밸브', '도면', '검토 항목']]
       .concat(lineRows().map((l) => [l.line_no, l.size, l.fluid_code, l.fluid_desc, l.spec_class, l.class_desc, l.insulation, l.service, nodeName(l.from_id), nodeName(l.to_id), KIND_LABEL[l.kind], l.inline_items.join(' '), drawingLabel(l.loc), l.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
   } else if (kind === 'instruments') {
     rows = [['Tag', '명칭', '구분', '형식', '설치 위치', '도면', '검토 항목']]

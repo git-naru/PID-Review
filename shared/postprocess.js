@@ -17,6 +17,9 @@ const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
  * @param {Array<{name:string, text:{pageCount:number,pages:Array}}>} files
  */
 export function postprocess(raw, files) {
+  // PFD(공정 흐름도)는 라인 번호·관경·Spec 대신 스트림 번호와 물질수지표를 쓰므로 P&ID 전용 검사를 건너뛴다
+  const docType = raw.doc_type === 'pfd' ? 'pfd' : 'pid';
+  const lineWord = docType === 'pfd' ? '스트림' : '라인';
   const drawings = arr(raw.drawings).map((d) => ({
     file_index: int(d.file_index), page: int(d.page, 1),
     sheet_type: ['legend', 'pid', 'other'].includes(d.sheet_type) ? d.sheet_type : 'pid',
@@ -82,6 +85,7 @@ export function postprocess(raw, files) {
       from_id: '',
       to_id: '',
       inline_items: arr(l.inline_items).map(s).filter(Boolean),
+      specs: arr(l.specs).map((x) => ({ name: s(x?.name), value: s(x?.value) })).filter((x) => x.name || x.value),
       loc: normLoc(l.loc, files),
       confidence: s(l.confidence) || 'medium',
       note: s(l.note),
@@ -124,12 +128,12 @@ export function postprocess(raw, files) {
       const missing = !l.from_id && !l.to_id ? '양 끝단' : !l.from_id ? '시작점' : '끝점';
       ruleIssues.push({
         severity: 'high', category: 'unconnected',
-        title: `라인 ${missing} 미연결`,
-        description: `${label(l)}의 ${missing}이(가) 어떤 설비·계기·Off-page에도 연결되어 있지 않습니다. 배관 물량 산출 전 연결처를 확인하세요.`,
+        title: `${lineWord} ${missing} 미연결`,
+        description: `${lineWord} ${l.line_no || `(${l.id})`}의 ${missing}이(가) 어떤 설비·계기·Off-page에도 연결되어 있지 않습니다. 물량 산출 전 연결처를 확인하세요.`,
         related_ids: [l.id],
       });
     }
-    if (l.kind === 'signal') continue;
+    if (l.kind === 'signal' || docType === 'pfd') continue;
     if (!l.line_no) {
       ruleIssues.push({
         severity: 'medium', category: 'missing_info',
@@ -183,7 +187,7 @@ export function postprocess(raw, files) {
         related_ids: [n.id],
       });
     }
-    if (n.category === 'equipment' && n.specs.length === 0) {
+    if (n.category === 'equipment' && n.specs.length === 0 && docType !== 'pfd') {
       ruleIssues.push({
         severity: 'low', category: 'missing_info',
         title: `설비 사양 정보 없음 (${n.tag || n.name})`,
@@ -225,7 +229,7 @@ export function postprocess(raw, files) {
     }
   }
 
-  checkAgainstLegend(legend, nodes, lines, ruleIssues);
+  checkAgainstLegend(legend, nodes, lines, ruleIssues, docType);
 
   const links = pairOffpages(nodes, lines, drawings.filter((d) => d.sheet_type !== 'legend'), ruleIssues);
 
@@ -259,6 +263,7 @@ export function postprocess(raw, files) {
 
   return {
     summary: s(raw.summary),
+    doc_type: docType,
     legend,
     drawings,
     files: files.map((f, i) => ({ index: i, name: f.name, pageCount: f.text.pageCount, hasTextLayer: f.text.pages.some((p) => p.runs.length > 0) })),
@@ -328,7 +333,9 @@ function locate(item, candidates, files, skipPages) {
     if (!text || normalizeTag(text).length < 3) continue;
     for (const [fi, file] of searchFiles) {
       const pages = file.text.pages.filter((p) => !skipPages.has(`${fi}:${p.page}`));
-      const hit = findTagOnPages(text, pages, fi === item.loc.file_index ? item.loc.page : 1);
+      const mb = item.loc.bbox;
+      const near = mb && fi === item.loc.file_index ? [(mb[0] + mb[2]) / 2, (mb[1] + mb[3]) / 2] : null;
+      const hit = findTagOnPages(text, pages, fi === item.loc.file_index ? item.loc.page : 1, near);
       if (hit) {
         item.loc = { file_index: fi, page: hit.page, bbox: hit.bbox.map(round4), source: 'text' };
         return;
@@ -382,7 +389,8 @@ const lookup = (table, code) => {
 };
 
 /** 범례에 정의된 체계와 도면 표기가 맞는지 검사 */
-function checkAgainstLegend(legend, nodes, lines, ruleIssues) {
+function checkAgainstLegend(legend, nodes, lines, ruleIssues, docType) {
+  if (!legend.found && docType === 'pfd') return; // PFD는 도면마다 기호 범례가 들어 있고 배관 Class 체계가 없다
   if (!legend.found) {
     ruleIssues.push({
       severity: 'low', category: 'other',

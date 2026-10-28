@@ -151,7 +151,7 @@ export function pageTextForPrompt(pg, maxChars = Infinity) {
  * 2) 계기 버블처럼 "FIC" / "101"이 위아래로 분리된 경우
  * @returns {{bbox:number[], page:number}|null}
  */
-export function findTagOnPages(tag, pages, preferPage) {
+export function findTagOnPages(tag, pages, preferPage, near = null) {
   const key = normalizeTag(tag);
   if (key.length < 2) return null;
   const ordered = [...pages].sort((a, b) => (a.page === preferPage ? -1 : 0) - (b.page === preferPage ? -1 : 0));
@@ -161,14 +161,16 @@ export function findTagOnPages(tag, pages, preferPage) {
       const norm = normalizeTag(r.text);
       const idx = norm.indexOf(key);
       if (idx < 0) continue;
-      // 정확 일치 우선, 그다음 짧은 run 우선
-      const score = (norm.length === key.length ? 0 : 1) * 1000 + norm.length;
-      if (best && best.score <= score) continue;
+      // 정확 일치 우선, 그다음 짧은 run 우선.
+      // 같은 글자가 여러 곳에 있으면(예: 도면의 스트림 번호와 물질수지표 머리글) 모델이 짚은 위치(near)에 가까운 쪽
       const frac0 = idx / norm.length, frac1 = (idx + key.length) / norm.length;
       const [x0, y0, x1, y1] = r.bbox;
       const bbox = r.vertical
         ? [x0, y1 - (y1 - y0) * frac1, x1, y1 - (y1 - y0) * frac0]
         : [x0 + (x1 - x0) * frac0, y0, x0 + (x1 - x0) * frac1, y1];
+      const dist = near && pg.page === preferPage ? Math.hypot((bbox[0] + bbox[2]) / 2 - near[0], (bbox[1] + bbox[3]) / 2 - near[1]) : 0;
+      const score = (norm.length === key.length ? 0 : 1) * 1000 + norm.length + dist * 100;
+      if (best && best.score <= score) continue;
       best = { score, bbox };
     }
     if (best) return { page: pg.page, bbox: best.bbox };

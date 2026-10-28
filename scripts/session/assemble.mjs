@@ -13,6 +13,7 @@ const read = async (f, fallback) => { try { return JSON.parse(await fs.readFile(
 const manifest = await read('manifest.json');
 const sheets = await read('sheets.json');
 const legendPart = await read('legend.json', null);
+const doc = await read('doc.json', {});
 
 // 범례 내용(legend.json 하나)은 첫 범례 시트에 붙이고, 나머지 범례 시트는 위치만 등록한다
 const legend = emptyLegend();
@@ -27,7 +28,8 @@ for (const s of sheets.filter((x) => x.sheet_type === 'pid')) {
   else failures.push({ sheet: s, message: out ? '판독 결과 형식이 맞지 않습니다.' : '판독 결과가 없습니다.' });
 }
 const texts = await Promise.all(manifest.files.map(async (f) => extractPdfText(await fs.readFile(f.path))));
-const raw = mergeSheets(sheets, legend, parts, failures);
+const raw = { ...mergeSheets(sheets, legend, parts, failures), doc_type: doc.doc_type || 'pid' };
+if (doc.summary) raw.summary = doc.summary;
 const result = postprocess(raw, manifest.files.map((f, i) => ({ name: f.name, text: texts[i] })));
 result.files.forEach((f, i) => { f.assetId = manifest.files[i].assetId; });
 const pid = sheets.filter((x) => x.sheet_type === 'pid').length;

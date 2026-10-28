@@ -72,6 +72,7 @@ export const SHEET_SHAPE = `{
     "size": string, "fluid_code": string, "spec_class": string, "insulation": string, "service": string,
     "from_id": string, "to_id": string,   // node ids from "nodes" above, or "" when not connected
     "inline_items": [string],             // tags of valves / instruments installed on the line
+    "specs": [{"name": string, "value": string}],  // stream / line data from a stream table or line list (flow, density, temperature...), original units; [] when none
     "bbox": [x0, y0, x1, y1] | null,      // around the line number label
     "confidence": "high" | "medium" | "low",
     "note": string
@@ -121,7 +122,7 @@ ${LEGEND_SHAPE}`;
  * region: 결과가 길어 시트를 나눠 판독할 때 이번 요청이 맡는 부분 {box:[x0,y0,x1,y1], index, count}
  * hasTextLayer: 텍스트 레이어가 있으면 위치는 텍스트에서 다시 찾으므로 bbox를 생략해 출력을 줄인다
  */
-export function sheetPrompt({ sheetLabel, legendJson, drawingsList, textLayer, imageNote, region = null, hasTextLayer = false }) {
+export function sheetPrompt({ sheetLabel, legendJson, drawingsList, textLayer, imageNote, region = null, hasTextLayer = false, docNote = '' }) {
   const regionNote = region
     ? `\nThis sheet is too dense for one answer, so it is read in ${region.count} overlapping parts. In THIS request read only part ${region.index}: x ${region.box[0]}-${region.box[2]}, y ${region.box[1]}-${region.box[3]} (normalized page coordinates).
 Extract the nodes whose tag or symbol lies in this part and the lines whose line number label lies in it. For a line that leaves this part,
@@ -132,7 +133,7 @@ still give from_id/to_id when you can read the node at the other end (use its ta
     : '\nKeep the answer compact: keep "note" under 10 words and leave it "" when there is nothing to note.';
   return `${ROLE}
 
-Analyze ONE P&ID sheet: ${sheetLabel}.${regionNote} Other sheets of the set are analyzed separately; the drawings uploaded in this set are:
+Analyze ONE P&ID sheet: ${sheetLabel}.${regionNote}${docNote ? `\n${docNote}\n` : ''} Other sheets of the set are analyzed separately; the drawings uploaded in this set are:
 ${drawingsList}
 Off-page connectors pointing to a drawing that is not in this list should be reported as offpage_unmatched issues.
 
