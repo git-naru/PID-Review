@@ -419,7 +419,7 @@ function renderFlow() {
 
 function nodeLabel(n) {
   if (n.category === 'equipment') return `${n.tag || n.id}\n${n.name}`;
-  if (n.category === 'offpage') return n.name || n.tag || n.offpage_ref;
+  if (n.category === 'offpage') return /\b(TO|FROM)\b/i.test(n.name) ? n.name : n.offpage_ref ? `↔ ${n.offpage_ref}` : n.name || n.tag;
   if (n.category === 'battery_limit') return n.tag || n.name || n.offpage_ref;
   return n.tag || n.name || n.id;
 }
