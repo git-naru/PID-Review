@@ -1,11 +1,15 @@
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 import { analyzeInBrowser } from './engine.js';
+import { setupChatMode } from './chatmode.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
 
 // 실행 환경: 로컬 서버(Node, API 키 사용) 또는 claude.ai 아티팩트(사용자 계정의 Claude 사용)
 const IN_ARTIFACT = Boolean(window.claude);
-const runtime = { sample: null, downloads: null, abort: null };
+// 아티팩트는 두 가지: 페이지에서 바로 분석(sample) / 도면만 올리고 Claude Code 채팅에서 분석(chat)
+const MODE = !IN_ARTIFACT ? 'server' : document.querySelector('meta[name="pid-mode"]')?.content === 'chat' ? 'chat' : 'sample';
+const runtime = { sample: null, downloads: null, abort: null, chat: null };
+let runAction = () => analyzeWithAccount(true);
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -34,9 +38,19 @@ async function init() {
   bindViewer();
   bindFlowToolbar();
   $('#btnStop').addEventListener('click', () => runtime.abort?.abort());
-  $('#btnResume').addEventListener('click', () => analyzeWithAccount(true));
-  $('#tierSelect').hidden = !IN_ARTIFACT;
+  $('#btnResume').addEventListener('click', () => runAction());
+  $('#tierSelect').hidden = MODE !== 'sample';
   const n = $('#apiNotice');
+  if (MODE === 'chat') {
+    $('#btnPick').textContent = '도면 올리기';
+    $('#btnAnalyze').textContent = '분석 요청';
+    runtime.chat = await setupChatMode({
+      $, esc, toast, applyResult, showRunBox,
+      setRunAction: (fn) => { runAction = fn; },
+      setDownloads: (d) => { runtime.downloads = d; },
+    });
+    return;
+  }
   if (IN_ARTIFACT) {
     [runtime.sample, runtime.downloads] = await Promise.all([
       window.claude.use('sample').catch(() => null),
@@ -94,6 +108,10 @@ function bindUpload() {
 const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
 
 function addFiles(files) {
+  if (MODE === 'chat') {
+    runtime.chat?.upload(files);
+    return;
+  }
   const pdfs = files.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
   if (pdfs.length < files.length) toast('PDF 파일만 입력할 수 있습니다.', true);
   for (const f of pdfs) {
@@ -114,6 +132,7 @@ function renderChips() {
 }
 
 async function analyze() {
+  if (MODE === 'chat') return runtime.chat?.request();
   if (IN_ARTIFACT) return analyzeWithAccount();
   const files = [...state.pending];
   if (!files.length) return;
@@ -178,6 +197,7 @@ async function analyzeWithAccount(resume = false) {
     return;
   }
   state.lastRun = { files };
+  runAction = () => analyzeWithAccount(true);
   showRunBox(null);
   runtime.abort = new AbortController();
   setBusy(true, 'PDF를 여는 중...', true);
@@ -247,6 +267,7 @@ function setBusy(busy, msg, stoppable = false) {
   $('#btnStop').hidden = !(busy && stoppable);
   $('#btnAnalyze').disabled = busy || state.pending.length === 0;
   $('#statusBar').hidden = !busy && !state.result && $('#runBox').hidden;
+  if (!busy) runtime.chat?.refresh();
   $('#progress').hidden = !busy;
   if (busy) {
     $('#progressText').textContent = msg;

@@ -1,0 +1,185 @@
+// "채팅 분석" 모드: 이 페이지는 도면을 올리고 결과를 보기만 하고, 분석은 Claude Code 채팅 세션이 한다.
+//
+// 데이터 흐름 (claude.ai 아티팩트의 assets + db 기능)
+//   페이지  → assets: PDF 업로드 (파일당 20MB 이하)
+//   페이지  → db files/<assetId>: {name, size, assetId, uploadedAt}  업로드 목록
+//   페이지  → db jobs/current: {status: "requested", files:[...]}     분석 요청
+//   세션    → db jobs/current: {status: "analyzing", progress}        진행 상황
+//   세션    → assets: 결과 JSON 업로드 후 jobs/current {status: "done", resultAsset}
+//   페이지  ← jobs/current 구독: 완료되면 결과 JSON과 PDF를 불러와 화면에 표시
+
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+export async function setupChatMode(ui) {
+  const { $, toast, esc } = ui;
+  const use = (name) => window.claude.use(name).catch(() => null);
+  const [db, assets, downloads] = await Promise.all([use('db'), use('assets'), use('downloads')]);
+  ui.setDownloads(downloads);
+
+  const notice = $('#apiNotice');
+  notice.hidden = false;
+  if (!db) {
+    notice.textContent = '이 화면에서는 도면 목록과 분석 결과를 불러올 수 없습니다. claude.ai에 로그인한 상태에서 이 페이지를 열어 주세요. "샘플 데모"는 그대로 볼 수 있습니다.';
+    $('#btnPick').disabled = true;
+    return { upload() {}, request() {}, refresh() { $('#btnPick').disabled = true; $('#btnAnalyze').disabled = true; } };
+  }
+  notice.className = 'notice info';
+  notice.innerHTML = '<b>사용 방법</b> ① <b>도면 올리기</b>로 범례와 P&amp;ID PDF를 올리고 ② <b>분석 요청</b>을 누른 뒤 ③ Claude Code 채팅에 "분석 요청했어"라고 알려 주세요. 분석은 채팅에서 진행되고, 끝나면 이 페이지에 결과가 자동으로 표시됩니다.';
+  if (!assets) {
+    $('#btnPick').disabled = true;
+    notice.innerHTML += '<br>도면은 이 페이지의 소유자와 편집자만 올릴 수 있습니다.';
+  }
+
+  const filesCol = db.collection('files');
+  const jobRef = db.doc('jobs/current');
+  let files = [];
+  let job = null;
+  let loadedResult = null;
+  let uploading = false;
+
+  // ---- 업로드 목록
+  filesCol.orderBy('uploadedAt').onSnapshot((snap) => {
+    files = snap.docs.map((d) => d.data()).filter((f) => f?.assetId);
+    renderFiles();
+  }, () => toast('도면 목록을 불러오지 못했습니다. 페이지를 새로고침해 주세요.', true));
+
+  function renderFiles() {
+    const busy = job?.status === 'requested' || job?.status === 'analyzing';
+    const ul = $('#fileChips');
+    ul.innerHTML = files.map((f) => `<li title="${esc(f.name)}"><span>${esc(f.name)}</span><span class="size">${(f.size / 1048576).toFixed(1)}MB</span>${assets && !busy ? `<button type="button" data-rm="${esc(f.assetId)}" aria-label="${esc(f.name)} 삭제">×</button>` : ''}</li>`).join('');
+    ul.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => remove(b.dataset.rm)));
+    if (!uploading) {
+      $('#fileHint').textContent = files.length
+        ? `올린 도면 ${files.length}개 (${(files.reduce((a, f) => a + f.size, 0) / 1048576).toFixed(1)}MB)`
+        : '올린 도면 없음 — 도면 올리기로 범례와 P&ID PDF를 올리거나 이 화면에 끌어다 놓으세요.';
+    }
+    $('#btnAnalyze').disabled = !files.length || busy || uploading;
+    $('#btnPick').disabled = !assets || uploading;
+  }
+
+  async function upload(list) {
+    if (!assets) return;
+    const pdfs = list.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+    if (pdfs.length < list.length) toast('PDF 파일만 올릴 수 있습니다.', true);
+    const tooBig = pdfs.filter((f) => f.size > MAX_PDF_BYTES);
+    if (tooBig.length) toast(`20MB를 넘는 파일은 올릴 수 없습니다: ${tooBig.map((f) => f.name).join(', ')}\nPDF를 나누어 올려 주세요.`, true);
+    const todo = pdfs.filter((f) => f.size <= MAX_PDF_BYTES && !files.some((x) => x.name === f.name && x.size === f.size));
+    if (!todo.length) return;
+    uploading = true;
+    $('#btnPick').disabled = true;
+    $('#btnAnalyze').disabled = true;
+    try {
+      for (const [i, f] of todo.entries()) {
+        $('#fileHint').textContent = `올리는 중 ${i + 1}/${todo.length}: ${f.name}`;
+        const res = await assets.upload(f, { type: 'application/pdf' });
+        await filesCol.doc(res.id).set({ name: f.name, size: f.size, assetId: res.id, uploadedAt: new Date().toISOString() });
+      }
+      toast(`${todo.length}개 파일을 올렸습니다.`);
+    } catch (e) {
+      toast(uploadErrorMessage(e), true);
+    } finally {
+      uploading = false;
+      renderFiles();
+    }
+  }
+
+  async function remove(assetId) {
+    const f = files.find((x) => x.assetId === assetId);
+    try {
+      await assets.delete(assetId);
+      await filesCol.doc(assetId).delete();
+      toast(`${f?.name || '파일'}을(를) 지웠습니다.`);
+    } catch (e) {
+      toast(uploadErrorMessage(e), true);
+    }
+  }
+
+  // ---- 분석 요청과 진행 상황
+  async function request() {
+    if (!files.length) return;
+    const body = {
+      ...(job || {}),
+      status: 'requested',
+      files: files.map((f) => ({ assetId: f.assetId, name: f.name, size: f.size })),
+      requestedAt: new Date().toISOString(),
+      progress: null,
+      message: '',
+    };
+    try {
+      await jobRef.set(body);
+    } catch {
+      toast('분석 요청을 저장하지 못했습니다. 이 페이지에 쓰기 권한이 있는지 확인해 주세요.', true);
+    }
+  }
+
+  jobRef.onSnapshot((snap) => {
+    job = snap.exists ? snap.data() : null;
+    renderJob();
+    renderFiles();
+    if (job?.resultAsset && job.resultAsset !== loadedResult) loadResult(job.resultAsset);
+  }, () => toast('분석 상태를 불러오지 못했습니다. 페이지를 새로고침해 주세요.', true));
+
+  function renderJob() {
+    const s = job?.status;
+    const when = (t) => (t ? new Date(t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+    if (s === 'requested') {
+      ui.showRunBox(`분석 요청됨 (${when(job.requestedAt)}, 파일 ${job.files?.length || 0}개). Claude Code 채팅에 "분석 요청했어"라고 알려 주세요.`, '요청 문구 복사');
+      ui.setRunAction(copyRequestText);
+    } else if (s === 'analyzing') {
+      const p = job.progress || {};
+      const count = p.total ? ` ${p.done || 0}/${p.total}` : '';
+      ui.showRunBox(`채팅에서 분석 중${count}${p.stage ? ` · ${p.stage}` : ''}. 이 페이지를 닫아도 분석은 계속되고, 끝나면 결과가 표시됩니다.`);
+    } else if (s === 'error') {
+      ui.showRunBox(`분석 중 문제가 생겼습니다: ${job.message || '알 수 없는 오류'}`, null, true);
+    } else if (s === 'done') {
+      ui.showRunBox(`분석 완료 (${when(job.finishedAt)})${job.message ? ` · ${job.message}` : ''}`);
+    } else {
+      ui.showRunBox(null);
+    }
+  }
+
+  async function copyRequestText() {
+    const text = '분석 요청했어';
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('"분석 요청했어"를 복사했습니다. 채팅에 붙여 넣어 주세요.');
+    } catch {
+      toast('채팅에 "분석 요청했어"라고 입력해 주세요.');
+    }
+  }
+
+  async function loadResult(resultAsset) {
+    loadedResult = resultAsset;
+    try {
+      const res = await fetch(`/_blob/${resultAsset}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const result = await res.json();
+      const sources = await Promise.all(result.files.map(async (f) => {
+        const r = await fetch(`/_blob/${f.assetId}`);
+        if (!r.ok) throw new Error(`${f.name}: ${r.status}`);
+        return r.arrayBuffer();
+      }));
+      ui.applyResult(result, sources);
+    } catch (e) {
+      loadedResult = null;
+      toast(`분석 결과를 불러오지 못했습니다 (${e.message}). 결과에 쓰인 도면이 지워졌는지 확인해 주세요.`, true);
+    }
+  }
+
+  renderFiles();
+  return { upload, request, refresh: renderFiles };
+}
+
+function uploadErrorMessage(e) {
+  switch (e?.code) {
+    case 'too_large': return '파일이 20MB를 넘습니다. PDF를 나누어 올려 주세요.';
+    case 'unsupported_type': return 'PDF 파일만 올릴 수 있습니다.';
+    case 'quota_or_state': return '이 페이지의 저장 공간이 가득 찼습니다. 쓰지 않는 도면을 지운 뒤 다시 올려 주세요.';
+    case 'rate_limited': return '너무 자주 올리고 있습니다. 잠시 후 다시 시도해 주세요.';
+    case 'upstream_auth': return '로그인이 만료되었습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.';
+    case 'not_granted':
+    case 'capability_disabled': return '이 화면에서는 도면을 올릴 수 없습니다.';
+    case 'store_unavailable': return '저장 공간에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.';
+    default: return `파일 처리 중 오류가 발생했습니다${e?.code ? ` (${e.code})` : ''}.`;
+  }
+}

@@ -28,7 +28,29 @@ PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설�
 - `sample: {images: true}`: Claude 호출, 이미지 포함
 - `downloads`: CSV/JSON 저장
 
-### 2. 로컬 서버 (Anthropic API 키 사용)
+### 2. 채팅 분석 (도면은 페이지에 올리고, 분석은 Claude Code 채팅에서)
+
+`dist/artifact-chat/`은 같은 화면의 변형입니다. 이 페이지는 도면을 올리고 결과를 보는 일만 하고, 분석은 Claude Code 채팅 세션이 맡습니다. 브라우저 탭을 열어 둘 필요가 없어서 수십 장 규모의 도면 세트에 적합합니다.
+
+1. **페이지에서**: **도면 올리기**로 PDF를 올립니다(파일당 20MB 이하).
+2. **페이지에서**: **분석 요청**을 누릅니다.
+3. **채팅에서**: "분석 요청했어"라고 알립니다.
+4. **세션에서**: 요청된 PDF를 받아 `scripts/session/` 순서로 분석합니다. 진행 상황은 페이지에 표시됩니다.
+   - `prepare.mjs`: 텍스트 레이어 추출과 이미지 렌더링
+   - 시트 분류와 범례 판독
+   - `make-prompts.mjs`: 시트별 판독 지시문 생성
+   - 시트별 판독(병렬)
+   - `assemble.mjs`: 병합과 검증
+5. **세션에서**: 결과 JSON을 페이지 저장소에 올립니다. 페이지가 자동으로 결과를 표시합니다.
+
+데이터는 페이지의 저장 기능에 들어 있습니다.
+- `assets`: 업로드한 PDF와 결과 JSON
+- `db` `files/<assetId>`: 업로드 목록
+- `db` `jobs/current`: 요청 상태, 진행 상황, 결과 위치
+
+필요한 capability는 `assets`, `db`, `user`, `downloads`입니다. 도면이 저장되므로 페이지 공유 범위에 주의하세요.
+
+### 3. 로컬 서버 (Anthropic API 키 사용)
 
 
 ```bash
@@ -78,6 +100,9 @@ npm run build:artifact   # claude.ai 아티팩트 번들 생성 (dist/artifact)
 server/   index.js(API·정적 파일) · analyzer.js(Claude API 호출) · pdfText.js(Node용 pdf.js 래퍼)
 shared/   pidText.js(텍스트/좌표) · postprocess.js(검증) · prompts.js(판독 지침) — 서버·브라우저 공용
 public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아티팩트용 브라우저 분석) · styles.css
-scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact)
+public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시)
+scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat)
+scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs (채팅 세션 분석, Python + pypdfium2 필요)
+shared/   merge.js(시트별 결과 병합)
 samples/  샘플 범례 1장 + P&ID 2장(의도적 결함 포함) · demo-analysis.json
 ```
