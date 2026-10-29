@@ -147,22 +147,41 @@ test('시트별 판독에서 겹치는 id는 시트 안의 연결을 유지한 �
   assert.deepEqual(raw.lines[1].inline_items, ['PUMP-1@PFD-00002']);
 });
 
-test('도면 선 추적: Line No.에서 시작해 그 라인의 경로만 따라간다', async () => {
+test('도면 선 추적: Line No.에서 시작해 이어진 배관(갈림길 포함)을 따라가고 설비 기호에서 멈춘다', async () => {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const { extractGeometry, traceLine } = await import('../shared/pdfGeom.js');
   const task = pdfjs.getDocument({ data: new Uint8Array(await fs.readFile(path.join(SAMPLES, 'PID-100-001.pdf'))) });
   try {
     const g = await extractGeometry(await (await task.promise).getPage(1), pdfjs.OPS, pdfjs.Util);
     const { files } = await loadSamples();
-    // 6"-P-1001-A1A: TK-101 아래에서 P-101A까지 꺾인 경로 (선분 2개)
-    const label = findTagOnPages('6"-P-1001-A1A', files[1].text.pages, 1);
-    const t = traceLine(g, label.bbox);
-    assert.equal(t.segs.length, 2);
-    const ys = t.segs.flatMap((s) => [s[1], s[3]]);
-    assert.ok(ys.every((y) => y > 0.55 && y < 0.66), `경로 ${JSON.stringify(t.segs)}`);
-    // 4"-P-1004: E-101 → V-101, 계단 모양 선분 3개
-    assert.equal(traceLine(g, findTagOnPages('4"-P-1004', files[1].text.pages, 1).bbox).segs.length, 3);
+    // 6"-P-1001-A1A: TK-101 출구에서 갈라져 P-101A·P-101B 흡입까지 (펌프 기호에서 멈춤)
+    const t = traceLine(g, findTagOnPages('6"-P-1001-A1A', files[1].text.pages, 1).bbox);
+    const ys = t.segs.flatMap((s) => [s[1], s[3]]), xs = t.segs.flatMap((s) => [s[0], s[2]]);
+    assert.ok(ys.some((y) => Math.abs(y - 0.644) < 0.002) && ys.some((y) => Math.abs(y - 0.762) < 0.002), `두 갈래 ${JSON.stringify(t.segs)}`);
+    assert.ok(xs.every((x) => x < 0.245), '펌프를 넘어가지 않음');
+    // 4"-P-1004: E-101 → V-101 계단 모양 경로만
+    const t2 = traceLine(g, findTagOnPages('4"-P-1004', files[1].text.pages, 1).bbox);
+    assert.ok(t2.segs.every((s) => s[0] >= 0.51 && s[2] <= 0.66 && s[0] <= 0.66), JSON.stringify(t2.segs));
   } finally {
     task.destroy();
   }
+});
+
+test('점선(짧은 대시 조각)도 끊긴 틈을 건너 모서리까지 따라가고, 선·화살촉 위 점은 거리 0에 가깝다', async () => {
+  const { traceLine, traceDistance } = await import('../shared/pdfGeom.js');
+  const segs = [];
+  // y=0.4 에서 x 0.10→0.30 까지 대시(길이 0.004, 틈 0.002), 이어서 x=0.30 에서 아래로 0.40→0.50
+  for (let x = 0.10; x < 0.30; x += 0.006) segs.push({ a: [x, 0.4], b: [Math.min(x + 0.004, 0.3), 0.4], dashed: false });
+  for (let y = 0.40; y < 0.50; y += 0.006) segs.push({ a: [0.3, y], b: [0.3, Math.min(y + 0.004, 0.5)], dashed: false });
+  segs.push({ a: [0.05, 0.6], b: [0.4, 0.6], dashed: false }); // 관계없는 선
+  const arrow = [[0.296, 0.5], [0.304, 0.5], [0.3, 0.508]];
+  const geom = { segs, fills: [arrow] };
+  const t = traceLine(geom, [0.15, 0.394, 0.158, 0.4]); // 대시 위 라벨
+  assert.ok(t.segs.length > 40, `대시 ${t.segs?.length}개`);
+  assert.ok(t.segs.some((s) => s[1] > 0.45), '모서리를 돌아 아래로');
+  assert.ok(!t.segs.some((s) => s[1] === 0.6), '다른 선은 포함하지 않음');
+  assert.equal(t.arrows.length, 1);
+  assert.ok(traceDistance(t, [0.2, 0.4]) < 0.002);
+  assert.equal(traceDistance(t, [0.3, 0.503]), 0, '화살촉 안');
+  assert.ok(traceDistance(t, [0.2, 0.6]) > 0.1);
 });

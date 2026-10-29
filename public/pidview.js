@@ -6,7 +6,7 @@
 //      pdfjs: {OPS, Util}}
 // 선택한 라인(설비면 연결된 라인들)은 도면의 실제 선과 화살촉을 따라가 붉게 칠한다 (shared/pdfGeom.js)
 
-import { extractGeometry, traceLine } from './shared/pdfGeom.js';
+import { extractGeometry, traceLine, traceDistance } from './shared/pdfGeom.js';
 
 const MIN_Z = 0.5, MAX_Z = 16;
 const MAX_CANVAS_PX = 8192;
@@ -136,7 +136,19 @@ export function createPidView(container, ui) {
     const b = e.target.closest('[data-go]');
     if (b) { ui.select(JSON.parse(b.dataset.go)); return; }
     const m = e.target.closest('[data-id]');
-    if (m) ui.select({ type: m.dataset.type, id: m.dataset.id }, 'flow');
+    if (m) { ui.select({ type: m.dataset.type, id: m.dataset.id }, 'flow'); return; }
+    // 도면의 선이나 화살표를 직접 눌러도 그 라인을 고른다
+    const hit = hitLine(e);
+    if (hit) ui.select({ type: 'line', id: hit }, 'flow');
+  });
+  // 선 위에 마우스를 올리면 손가락 모양
+  let hoverRaf = 0;
+  marks.addEventListener('mousemove', (e) => {
+    if (drag || hoverRaf) return;
+    hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0;
+      marks.style.cursor = !e.target.closest('[data-id], .pv-nav') && hitLine(e) ? 'pointer' : '';
+    });
   });
   marks.addEventListener('dblclick', (e) => {
     if (e.target.closest('.pv-nav')) return;
@@ -234,6 +246,45 @@ export function createPidView(container, ui) {
     marks.append(el);
   }
 
+  /** 이 도면에 있는 라인들의 경로 (선 데이터가 준비된 뒤에만) */
+  const pageLines = () => (v.result ? v.result.lines.filter((l) => l.kind !== 'signal' && l.loc?.bbox && `${l.loc.file_index}:${l.loc.page}` === v.key) : []);
+  // 다른 스트림의 Line No. 표식에서 멈추도록 같은 도면의 다른 라인 위치를 넘긴다
+  const traceOf = (l, geom) => {
+    if (!traces.has(l.id)) {
+      const stops = pageLines().filter((x) => x.id !== l.id && x.line_no && x.line_no !== l.line_no).map((x) => x.loc.bbox);
+      traces.set(l.id, traceLine(geom, l.loc.bbox, { stops }));
+    }
+    return traces.get(l.id);
+  };
+  let readyGeom = null; // {key, geom}
+
+  /** 이 도면 라인들의 경로를 화면을 멈추지 않게 하나씩 미리 계산 (선 클릭·마우스 올림용) */
+  function warm() {
+    const rg = readyGeom;
+    const todo = pageLines().filter((l) => !traces.has(l.id));
+    const step = () => {
+      if (readyGeom !== rg || !todo.length) return;
+      traceOf(todo.shift(), rg.geom);
+      setTimeout(step, 0);
+    };
+    setTimeout(step, 50);
+  }
+
+  /** 화면 위치 → 가장 가까운 라인 경로 (화면에서 6px 이내) */
+  function hitLine(e) {
+    if (!readyGeom || readyGeom.key !== v.key || !v.page) return null;
+    const r = container.getBoundingClientRect();
+    const p = [(e.clientX - r.left - v.tx) / (v.W * v.z), (e.clientY - r.top - v.ty) / (v.H * v.z)];
+    const tol = 6 / (v.W * v.z);
+    let best = null, bestD = tol;
+    for (const l of pageLines()) {
+      if (!traces.has(l.id)) continue; // 아직 계산 전 (배경에서 계산 중)
+      const d = traceDistance(traces.get(l.id), p);
+      if (d < bestD) { bestD = d; best = l.id; }
+    }
+    return best;
+  }
+
   /** 선택한 라인의 도면상 경로를 붉게: 설비를 고르면 그 설비에 연결된 라인들 */
   async function drawFlow() {
     const key = v.key;
@@ -250,10 +301,13 @@ export function createPidView(container, ui) {
     if (!geom || key !== v.key) return;
     const parts = [];
     for (const l of [...lines.values()].slice(0, 12)) {
-      if (!traces.has(l.id)) traces.set(l.id, traceLine(geom, l.loc.bbox));
-      const t = traces.get(l.id);
+      const t = traceOf(l, geom);
       if (!t) continue;
-      parts.push(`<path class="route" d="${t.segs.map((s) => `M${s[0]} ${s[1]}L${s[2]} ${s[3]}`).join('')}"/>`);
+      // 점선 스타일로 그려진 선은 점선으로 (짧은 대시 조각들로 된 점선은 조각만 칠해 저절로 점선)
+      const solid = t.segs.filter((s) => !s[4]), dash = t.segs.filter((s) => s[4]);
+      const d = (xs) => xs.map((s) => `M${s[0]} ${s[1]}L${s[2]} ${s[3]}`).join('');
+      if (solid.length) parts.push(`<path class="route" d="${d(solid)}"/>`);
+      if (dash.length) parts.push(`<path class="route dash" d="${d(dash)}"/>`);
       for (const a of t.arrows) parts.push(`<polygon class="arrow" points="${a.map((p) => `${p[0]},${p[1]}`).join(' ')}"/>`);
     }
     flowSvg.innerHTML = parts.join('');
@@ -275,6 +329,8 @@ export function createPidView(container, ui) {
         if (v.key !== key) return;
         v.page = page;
         if (!geoms.has(key)) geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
+        readyGeom = null;
+        geoms.get(key).then((geom) => { if (geom && v.key === key) { readyGeom = { key, geom }; warm(); } });
         const vp = page.getViewport({ scale: 1 });
         v.pw = vp.width;
         v.ph = vp.height;
@@ -311,6 +367,7 @@ export function createPidView(container, ui) {
     show(result, key, reload = false) {
       v.result = result;
       traces.clear();
+      if (readyGeom) warm();
       if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); }
       return setPage(key);
     },
