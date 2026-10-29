@@ -189,6 +189,8 @@ button { font: inherit; }
 .kv.wide th { width: 55%; }
 .mb-lookup input { padding: 5px 10px; border: 1px solid var(--accent); border-radius: 999px; min-width: 260px; max-width: 100%; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
 .mb-box { width: min(1000px, 100%); }
+.mb-box .modal-tools { flex-wrap: wrap; align-items: center; }
+.mb-box .mb-lookup input { min-width: 220px; }
 .mb-table-wrap { overflow: auto; max-height: 72vh; border: 1px solid var(--border); border-radius: 8px; }
 .mb-table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 100%; }
 .mb-table th, .mb-table td { padding: 5px 10px; border-bottom: 1px solid var(--border-soft); text-align: right; white-space: nowrap; }

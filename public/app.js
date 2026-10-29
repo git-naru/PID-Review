@@ -129,6 +129,12 @@ function bindUpload() {
     lookupMassBalance($('#mbLookupInput').value);
   });
   $('#mbClose').addEventListener('click', closeMbTable);
+  // 물질수지 표 창 안에서도 다른 Line No.를 바로 조회
+  $('#mbLookup2').addEventListener('submit', (e) => {
+    e.preventDefault();
+    lookupMassBalance($('#mbLookupInput2').value);
+    $('#mbLookupInput2').select();
+  });
   $('#mbModal').addEventListener('click', (e) => { if (e.target.id === 'mbModal') closeMbTable(); });
   $('#mbCsv').addEventListener('click', () => mbTableState && download(`massbalance-${mbTableState.streams.map((x) => x.id).join('_').slice(0, 60)}.csv`, '\ufeff' + mbTableCsv(mbTableState), 'text/csv;charset=utf-8'));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#mbModal').hidden) closeMbTable(); });
@@ -898,6 +904,8 @@ function openMbTable(streams) {
       : `<tr class="${r.kind === 'li' || r.kind === 'cur' ? r.kind : ''}"><td>${esc(r.label)}</td><td>${esc(r.unit)}</td>${r.vals.map((v) => `<td${r.kind === 'text' ? ' class="text"' : ''}>${esc(v)}</td>`).join('')}</tr>`)).join('')
   }</tbody>`;
   $('#mbModal').hidden = false;
+  const q = $('#mbLookupInput2');
+  if (document.activeElement !== q) { q.value = ''; q.focus(); }
 }
 
 function closeMbTable() {
