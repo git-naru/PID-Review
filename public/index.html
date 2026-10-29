@@ -76,7 +76,15 @@
   <main class="layout">
     <section class="card flow-card">
       <div class="card-head">
-        <h2>공정 Flow</h2>
+        <div class="flow-title">
+          <h2>공정 Flow</h2>
+          <select id="unitSelect" title="공정 단위">
+            <option>BL1U</option><option>BL1D</option><option>BL2U</option><option>BL2D</option><option>HL1U</option><option>HL1D</option><option selected>BL3U</option>
+          </select>
+          <div class="doc-pick" id="docPick" role="group" aria-label="도면 종류">
+            <button type="button" data-doc="pfd" title="PFD 보기">PFD</button><span aria-hidden="true">/</span><button type="button" data-doc="pid" title="P&amp;ID 보기">P&amp;ID</button>
+          </div>
+        </div>
         <div class="toolbar">
           <div class="seg" id="flowMode" role="group" aria-label="Flow 보기 방식">
             <button type="button" data-mode="basic" title="원본 PDF 도면 그대로 보기">기본</button>
@@ -84,12 +92,11 @@
           </div>
           <select id="drawingFilter" title="도면 선택"><option value="all">전체 도면</option></select>
           <select id="flowValue" title="라인에 함께 표시할 스트림 값 (물질수지 또는 도면 스트림 표)" hidden></select>
-          <label title="계기·밸브와 신호선/설치 위치 연결을 함께 표시"><input type="checkbox" id="optInstruments" /> 계기·밸브</label>
-          <label><input type="checkbox" id="optUtility" /> 유틸리티</label>
           <label id="optNavLabel" title="선택한 설비·라인 아래에 ◀ From / To ▶ 이동 버튼 표시"><input type="checkbox" id="optNav" /> 연결목록</label>
           <label id="optMainLabel" title="도면 범례의 MAIN FLOW와 같은 굵기·색의 선을 주황색으로 표시"><input type="checkbox" id="optMain" /> Main Stream</label>
           <button class="btn small" id="btnFitWidth" type="button" title="도면 가로 폭에 맞춰 크게 보기">폭맞춤</button>
           <button class="btn small" id="btnFit" type="button" title="도면 전체가 보이게">화면 맞춤</button>
+          <button class="btn small" id="btnFull" type="button" title="공정 Flow를 전체 화면으로 (Esc: 나가기)">전체화면</button>
         </div>
       </div>
       <div class="flow-wrap">
@@ -97,8 +104,9 @@
         <div id="pidView" class="pid-view" hidden></div>
         <div class="empty" id="flowEmpty">
           <div class="empty-icon">⇄</div>
-          <p><strong>PDF 입력</strong> 버튼으로 P&amp;ID를 선택하고 <strong>분석 시작</strong>을 누르세요.</p>
-          <p class="muted">분석 전에 기능을 미리 보려면 <strong>샘플 데모</strong>를 누르세요.</p>
+          <p class="slot-empty" id="slotEmpty" hidden></p>
+          <p id="emptyHow"><strong>PDF 입력</strong> 버튼으로 P&amp;ID를 선택하고 <strong>분석 시작</strong>을 누르세요.</p>
+          <p class="muted" id="emptyDemo">분석 전에 기능을 미리 보려면 <strong>샘플 데모</strong>를 누르세요.</p>
         </div>
         <ul class="legend" id="legendBasic" hidden>
           <li><i class="lg eq"></i>설비</li>

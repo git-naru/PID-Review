@@ -49,7 +49,12 @@
 - **Flow 보기 방식**: [기본 | 자동배치], 기본값은 **기본**이다(원본 PDF 도면 위에 표시).
   - 도면마다 확대·이동 상태를 기억한다. 처음에는 폭맞춤으로 열린다.
   - 도구 막대에 **폭맞춤**과 **화면 맞춤** 버튼이 있다.
-- **체크 항목**: 계기·밸브, 유틸리티, 연결목록, Main Stream 모두 **기본 꺼짐**.
+- **공정 단위 · 도면 종류**: 공정 Flow 제목 오른쪽에 단위 드롭박스(BL1U, BL1D, BL2U, BL2D, HL1U, HL1D, BL3U)와 글씨 **PFD / P&ID**를 둔다.
+  - 고른 종류만 색으로 표시한다(PFD 파랑, P&ID 초록).
+  - 단위 × 도면 종류(묶음 키 `BL1U-PID` 등)마다 도면·결과·물질수지를 따로 둔다. 처음 화면은 **BL3U · PFD**다.
+  - 지금 저장된 POSCO CP3 PFD와 물질수지는 BL3U · PFD에 속한다.
+- **체크 항목**: 연결목록, Main Stream 두 개만 있고 **기본 꺼짐**. 계기·밸브, 유틸리티 체크는 사용자 요청으로 없앴다(Flow에 표시하지 않음).
+- **전체화면**: 화면 맞춤 오른쪽 버튼. 공정 Flow 카드를 화면 가득 펼친다(브라우저 전체화면이 막히면 창 안에서 가득). 들어가고 나올 때 폭맞춤한다.
 - **Line No. 표시**: Line No.에만 둥근 테두리를 두르고, 유량 등 표시 값은 테두리 없이 그 아래에 둔다.
 - **붉은색은 선택한 항목에만 쓴다.**
   - 기본 보기에서는 검토 필요 항목을 붉게 표시하지 않는다. 자동배치는 기존대로 표시한다.
@@ -82,11 +87,11 @@
 - **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
   - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
   - 채팅 분석 페이지에 저장된 데이터
-    - db `jobs/current`: `status: done`, 결과 asset `6deebc1e2942be9a27c3507769ccf644`
+    - db `jobs/current`(BL3U · PFD 묶음): `status: done`, 결과 asset `6deebc1e2942be9a27c3507769ccf644`
     - 원본 PDF 8개는 페이지 assets에 있다(asset id는 결과 JSON의 `files[].assetId`).
 - **실제 물질수지 반영**: `319020-00626-0000-PR-CAL-00001_B.xlsx`
   - 46개 스트림 모두 매칭됐다.
-  - 페이지 db `massbalance/current`에 asset `1f5619f35c2489f4c7a60e4dd21da30b`로 저장돼 있어, 페이지를 열면 자동 적용된다.
+  - 페이지 db `massbalance/current`(BL3U · PFD 묶음)에 asset `1f5619f35c2489f4c7a60e4dd21da30b`로 저장돼 있어, 페이지를 열면 자동 적용된다.
   - 새 검토 항목 2건
     - 스트림 1090 % Moisture가 도면 100.0, 물질수지 0으로 다르다.
     - 도면 스트림 1095는 물질수지에 없다.
@@ -94,8 +99,10 @@
 - **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
 
 ## 4. 채팅 분석 처리 절차
-사용자가 "분석 요청했어"라고 하면 아래 순서로 처리한다. 작업 폴더는 scratchpad 아래 `jobN/`이다.
-1. **요청 확인**: `ArtifactData`로 `jobs/current`를 읽는다. `files[]`에 assetId와 파일명이 있다.
+사용자가 "BL1U · P&ID 분석 요청했어"처럼 말하면 아래 순서로 처리한다. 작업 폴더는 scratchpad 아래 `jobN/`이다.
+- **묶음(단위 × PFD/P&ID)마다 문서가 따로다.** `jobs/<문서>`, `massbalance/<문서>`에서 `<문서>`는 BL3U · PFD면 `current`, 나머지는 묶음 키(`BL1U-PID`, `HL1D-PFD` 등)다. 아래의 `jobs/<문서>`는 요청한 묶음의 문서다.
+- 묶음을 말하지 않았으면 `jobs` 컬렉션을 `list`해 `status: requested`인 문서를 찾는다.
+1. **요청 확인**: `ArtifactData`로 `jobs/<문서>`를 읽는다. `files[]`에 assetId와 파일명이 있고, `slot`, `unit`, `doc_type`(`pfd`|`pid`)이 있다.
 2. **진행 표시**: `status: analyzing`과 `progress {done,total,stage}`로 업데이트한다. `if_version`이 필수다.
 3. **PDF 내려받기**: Artifact `action: read`에 `path: <assetId>`를 주고 하나씩 받는다(`paths` 일괄은 asset에 안 됨). `files.json`을 `[{name, path, assetId}]` 형식으로 만든다.
 4. **준비**: `node scripts/session/prepare.mjs <work> <work>/files.json`
@@ -107,7 +114,7 @@
 7. **시트별 판독**: 시트마다 Agent를 병렬로 띄워 `out/f<fi>-p<p>.json`을 쓰게 한다.
 8. **병합**: `node scripts/session/assemble.mjs <work>`를 실행하면 `result.json`이 생긴다.
 9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 준다.
-10. **완료 표시**: `jobs/current`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
+10. **완료 표시**: `jobs/<문서>`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
 11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html>`
 
 **POSCO 결과 HTML 다시 만들기** (새 세션)

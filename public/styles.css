@@ -149,6 +149,23 @@ button { font: inherit; }
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .toolbar select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); max-width: 165px; }
 .toolbar label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+/* 공정 단위 · 도면 종류 (PFD / P&ID): 고른 쪽만 색으로 */
+.flow-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.flow-title select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; }
+.doc-pick { display: inline-flex; align-items: center; gap: 2px; font-size: 13.5px; font-weight: 700; color: var(--muted); }
+.doc-pick span { opacity: .6; padding: 0 2px; }
+.doc-pick button { border: 0; background: none; color: var(--muted); font: inherit; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+.doc-pick button:hover:not(:disabled) { color: var(--text); }
+.doc-pick button:disabled { cursor: default; }
+.doc-pick button.active[data-doc="pfd"] { color: var(--primary); }
+.doc-pick button.active[data-doc="pid"] { color: var(--accent); }
+.doc-pick button.active { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+.doc-pick button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.slot-empty { font-size: 14px; }
+/* 전체화면: 공정 Flow 카드가 화면을 가득 채운다 */
+.flow-card.full { position: fixed; inset: 0; z-index: 40; border-radius: 0; border: 0; display: flex; flex-direction: column; overflow: auto; }
+.flow-card.full .flow-wrap { flex: 1 1 auto; height: auto; min-height: 320px; }
+.btn.active { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
 .flow-wrap { position: relative; height: clamp(540px, 72vh, 860px); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;

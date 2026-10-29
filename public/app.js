@@ -10,6 +10,9 @@ import {
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
 
+const DEFAULT_UNIT = 'BL3U';
+const DEFAULT_SLOT = `${DEFAULT_UNIT}-PFD`; // 처음 화면이자, 단위 구분 전에 올린 자료가 속하는 묶음
+
 // 실행 환경: 로컬 서버(Node, API 키 사용) 또는 claude.ai 아티팩트(사용자 계정의 Claude 사용)
 const IN_ARTIFACT = Boolean(window.claude);
 // 아티팩트는 두 가지: 페이지에서 바로 분석(sample) / 도면만 올리고 Claude Code 채팅에서 분석(chat)
@@ -45,7 +48,15 @@ const state = {
   lineStream: new Map(), // 라인 id → 매칭된 물질수지 스트림
   flowMode: loadFlowMode(), // 'basic': 원본 도면 형식, 'auto': 자동배치
   pvSources: null, // 기본 보기에 열려 있는 PDF 묶음
+  unit: DEFAULT_UNIT, // 공정 단위 (BL1U ~ BL3U)
+  doc: 'pfd', // 'pfd' | 'pid'
 };
+
+// 공정 단위 × 도면 종류(PFD, P&ID)마다 도면·분석 결과·물질수지를 따로 둔다.
+// 지금 화면에 없는 묶음은 slots에 보관했다가 다시 고르면 그대로 꺼낸다.
+const slots = new Map();
+const slotKey = (unit = state.unit, doc = state.doc) => `${unit}-${doc.toUpperCase()}`;
+const slotLabel = (key = slotKey()) => key.replace('-PFD', ' · PFD').replace('-PID', ' · P&ID');
 
 function loadFlowMode() {
   try { return localStorage.getItem('pid.flowMode') === 'auto' ? 'auto' : 'basic'; } catch { return 'basic'; }
@@ -65,12 +76,16 @@ async function init() {
   if (MODE === 'chat') {
     $('#btnPick').textContent = '도면 올리기';
     $('#btnAnalyze').textContent = '분석 요청';
+    $('#emptyHow').innerHTML = '<strong>도면 올리기</strong>로 PDF를 올리고 <strong>분석 요청</strong>을 누른 뒤 채팅에 알려 주세요.';
     runtime.chat = await setupChatMode({
       $, esc, toast, applyResult, showRunBox,
+      defaultSlot: DEFAULT_SLOT,
+      slot: () => ({ key: slotKey(), unit: state.unit, doc: state.doc, label: slotLabel() }),
       setRunAction: (fn) => { runAction = fn; },
       setDownloads: (d) => { runtime.downloads = d; },
       setMassBalance: (mb, opts) => setMassBalance(mb, opts),
     });
+    runtime.chat.setSlot(slotKey());
     return;
   }
   if (IN_ARTIFACT) {
@@ -98,7 +113,7 @@ async function init() {
 
 /** 보기 전용 HTML: 들어 있는 결과와 도면을 바로 표시 */
 function initStatic(notice) {
-  ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect', '#fileHint', '#fileChips'].forEach((s) => { $(s).hidden = true; });
+  ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect', '#fileHint', '#fileChips', '#emptyHow', '#emptyDemo'].forEach((s) => { $(s).hidden = true; });
   const data = JSON.parse(STATIC_DATA.textContent);
   const toBuffer = (b64) => {
     const bin = atob(b64);
@@ -357,7 +372,15 @@ async function loadMassBalance(file) {
 }
 
 /** 물질수지를 넣거나(mb) 뺀다(null). 분석 결과가 있으면 바로 다시 매칭한다 */
-async function setMassBalance(mb, { persist = false, quiet = false } = {}) {
+async function setMassBalance(mb, { persist = false, quiet = false, slot = null } = {}) {
+  if (slot && slot !== slotKey()) {
+    // 다른 단위·도면 종류의 물질수지(채팅 분석 페이지에 저장된 것): 보관만 해 두고 그 묶음을 고를 때 적용
+    const s = stash(slot);
+    s.massBalance = mb;
+    s.flowKey = null;
+    if (!mb && s.result) s.result = stripMassBalance(s.result);
+    return;
+  }
   state.massBalance = mb;
   state.flowKey = null;
   renderMbChip();
@@ -404,7 +427,9 @@ function buildValueSelect() {
 }
 
 function setBusy(busy, msg, stoppable = false) {
-  ['#btnPick', '#btnDemo', '#tierSelect', '#btnResume'].forEach((s) => { $(s).disabled = busy; });
+  // 분석 중에는 단위·도면 종류를 바꾸지 않는다 (결과가 다른 묶음에 들어가지 않게)
+  ['#btnPick', '#btnDemo', '#tierSelect', '#btnResume', '#unitSelect'].forEach((s) => { $(s).disabled = busy; });
+  document.querySelectorAll('#docPick button').forEach((b) => { b.disabled = busy; });
   $('#btnStop').hidden = !(busy && stoppable);
   $('#btnAnalyze').disabled = busy || state.pending.length === 0;
   $('#statusBar').hidden = !busy && !state.result && $('#runBox').hidden;
@@ -417,7 +442,13 @@ function setBusy(busy, msg, stoppable = false) {
 }
 
 // ------------------------------------------------------------------ 결과 반영
-function applyResult(result, sources) {
+function applyResult(result, sources, slot = null) {
+  if (slot && slot !== slotKey()) {
+    // 채팅 분석 결과가 다른 묶음을 보는 동안 도착: 보관했다가 그 묶음을 고를 때 표시
+    Object.assign(stash(slot), { result, sources, selected: null });
+    return;
+  }
+  $('#slotEmpty').hidden = true;
   if (result !== state.result) {
     // 샘플 물질수지는 샘플 데모에만 쓴다
     if (state.massBalance?.demo && !result.meta?.demo) { state.massBalance = null; renderMbChip(); }
@@ -537,7 +568,11 @@ function bindFlowToolbar() {
   });
   document.querySelectorAll('#flowMode [data-mode]').forEach((b) => b.addEventListener('click', () => setFlowMode(b.dataset.mode)));
   markFlowMode();
-  ['#optInstruments', '#optUtility', '#drawingFilter'].forEach((s) => $(s).addEventListener('change', applyFlowFilter));
+  $('#drawingFilter').addEventListener('change', applyFlowFilter);
+  $('#unitSelect').addEventListener('change', () => setSlot($('#unitSelect').value, state.doc));
+  document.querySelectorAll('#docPick [data-doc]').forEach((b) => b.addEventListener('click', () => setSlot(state.unit, b.dataset.doc)));
+  markSlot();
+  bindFullscreen();
   $('#optNav').addEventListener('change', () => pv.refresh());
   $('#optMain').addEventListener('change', showMainStream);
   $('#flowValue').addEventListener('change', () => {
@@ -590,6 +625,104 @@ function flowNav() {
   }
   const uniq = (xs) => xs.filter((x, i) => xs.findIndex((y) => y.sel.id === x.sel.id) === i).slice(0, 6);
   return { anchor: n, prev: uniq(prev), next: uniq(next) };
+}
+
+/** 공정 단위·도면 종류 바꾸기: 지금 묶음을 보관하고 고른 묶음을 꺼낸다 */
+function stash(key) {
+  if (!slots.has(key)) slots.set(key, { pending: [], result: null, sources: [], massBalance: null, flowKey: null, selected: null });
+  return slots.get(key);
+}
+
+function setSlot(unit, doc) {
+  const next = slotKey(unit, doc);
+  if (next === slotKey()) return;
+  Object.assign(stash(slotKey()), {
+    pending: state.pending, result: state.result, sources: state.sources,
+    massBalance: state.massBalance, flowKey: state.flowKey, selected: state.selected,
+  });
+  state.unit = unit;
+  state.doc = doc;
+  markSlot();
+  const s = stash(next);
+  state.pending = s.pending;
+  state.massBalance = s.massBalance;
+  state.flowKey = s.flowKey;
+  renderMbChip();
+  closeMbTable();
+  if (!$('#viewer').hidden) closeViewer();
+  if (s.result) {
+    state.result = null; // 보관한 결과도 새 결과처럼 다시 그린다
+    applyResult(s.result, s.sources);
+    if (s.selected && s.selected.type !== 'free') select(s.selected);
+  } else clearResult();
+  if (MODE === 'chat') runtime.chat?.setSlot(next);
+  else if (MODE !== 'static') renderChips();
+}
+
+function markSlot() {
+  $('#unitSelect').value = state.unit;
+  document.querySelectorAll('#docPick [data-doc]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.doc === state.doc);
+    b.setAttribute('aria-pressed', String(b.dataset.doc === state.doc));
+  });
+}
+
+/** 결과가 없는 묶음: Flow·리스트·상세를 비운다 */
+function clearResult() {
+  for (const task of state.pdfDocs.values()) task.destroy();
+  state.pdfDocs.clear();
+  Object.assign(state, { result: null, sources: [], selected: null, lineStream: new Map(), valueOptions: [], pvSources: null });
+  if (cy) { cy.destroy(); cy = null; }
+  pv.reset();
+  $('#flowEmpty').hidden = false;
+  $('#slotEmpty').hidden = false;
+  $('#slotEmpty').innerHTML = `<b>${esc(slotLabel())}</b> 자료가 아직 없습니다.`;
+  $('#summary').hidden = true;
+  $('#statusBar').hidden = $('#runBox').hidden && $('#progress').hidden;
+  $('#btnExport').disabled = true;
+  $('#drawingFilter').innerHTML = '<option value="all">전체 도면</option>';
+  ['#cntEquipment', '#cntLines', '#cntInstruments', '#cntLegend', '#cntMb'].forEach((s) => { $(s).textContent = '0'; });
+  $('.tab[data-tab="lines"]').firstChild.textContent = '배관 리스트 ';
+  $('.tab[data-tab="massbalance"]').hidden = true;
+  $('#mbLookup').hidden = true;
+  if (state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
+  $('#flowValue').hidden = true;
+  $('#lgFlow').hidden = true;
+  renderList();
+  renderIssues();
+  renderDetail();
+}
+
+/** 전체화면: 공정 Flow 카드만 화면 가득. 브라우저 전체화면이 막혀 있으면(임베드 등) 창 안에서 가득 채운다 */
+function bindFullscreen() {
+  const card = document.querySelector('.flow-card');
+  const btn = $('#btnFull');
+  const set = (on) => {
+    card.classList.toggle('full', on);
+    btn.textContent = on ? '전체화면 종료' : '전체화면';
+    btn.classList.toggle('active', on);
+    // 바뀐 크기에 맞춰 도면 폭(자동배치는 전체)을 다시 맞춘다
+    requestAnimationFrame(() => {
+      if (state.flowMode === 'basic') { pv.fitWidth(); return; }
+      cy?.resize();
+      cy?.fit(cy.elements(':visible'), 30);
+    });
+  };
+  btn.addEventListener('click', async () => {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    if (card.classList.contains('full')) { set(false); return; }
+    try {
+      // 문서 전체를 전체화면으로 해야 상세 보기·물질수지 창도 그 위에 뜬다
+      await document.documentElement.requestFullscreen();
+    } catch {
+      set(true);
+    }
+  });
+  document.addEventListener('fullscreenchange', () => set(Boolean(document.fullscreenElement)));
+  // 창 안 전체화면은 Esc로 나간다 (열린 창이 있으면 그 창이 먼저 닫히도록 캡처 단계에서 확인)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && card.classList.contains('full') && !document.fullscreenElement && $('#mbModal').hidden && $('#viewer').hidden) set(false);
+  }, true);
 }
 
 /** Main Stream 주황 표시 켜고 끄기 (기본 보기, 기본은 꺼짐) */
@@ -645,7 +778,6 @@ function renderFlow() {
   if (state.flowMode === 'basic') {
     const reload = state.pvSources !== state.sources;
     state.pvSources = state.sources;
-    pv.setFilter({ instruments: $('#optInstruments').checked, utility: $('#optUtility').checked });
     pv.show(state.result, $('#drawingFilter').value, reload);
     return;
   }
@@ -752,24 +884,22 @@ function nodeLabel(n) {
 function applyFlowFilter() {
   if (state.flowMode === 'basic') {
     ensureSinglePage();
-    pv.setFilter({ instruments: $('#optInstruments').checked, utility: $('#optUtility').checked });
     pv.setPage($('#drawingFilter').value);
     return;
   }
   if (!cy) return;
-  const showIns = $('#optInstruments').checked;
-  const showUt = $('#optUtility').checked;
+  // 계기·밸브와 유틸리티는 자동배치에서도 표시하지 않는다 (공정 흐름만)
   const page = $('#drawingFilter').value;
   cy.batch(() => {
     cy.nodes().forEach((n) => {
       const c = n.data('category');
-      let vis = showIns || !(c === 'instrument' || c === 'valve');
+      let vis = c !== 'instrument' && c !== 'valve';
       if (page !== 'all' && n.data('page') !== page) vis = false;
       n.style('display', vis ? 'element' : 'none');
     });
     cy.edges().forEach((e) => {
       const k = e.data('kind');
-      let vis = ((k !== 'signal' && k !== 'assoc') || showIns) && (k !== 'utility' || showUt);
+      let vis = k !== 'signal' && k !== 'assoc' && k !== 'utility';
       if (e.data('type') === 'link' && page !== 'all') vis = false;
       e.style('display', vis ? 'element' : 'none');
     });

@@ -427,7 +427,22 @@ export function createPidView(container, ui) {
     fitWidth,
     refresh: buildMarks,
     setFilter(f) { Object.assign(filter, f); buildMarks(); },
-    reset() { v.result = null; v.key = null; v.page = null; marks.innerHTML = ''; },
+    /** 결과가 없을 때: 도면과 표시를 모두 지운다 */
+    reset() {
+      v.seq++;
+      v.task?.cancel();
+      Object.assign(v, { result: null, key: null, page: null, rendered: '' });
+      views.clear(); geoms.clear(); traces.clear();
+      readyGeom = null;
+      freeTrace = null;
+      selected = new Set();
+      canvas.width = 0;
+      canvas.height = 0;
+      marks.innerHTML = '';
+      flowSvg.innerHTML = '';
+      mainSvg.innerHTML = '';
+      msg.hidden = true;
+    },
   };
 }
 
