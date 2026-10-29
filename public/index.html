@@ -202,6 +202,25 @@
     </div>
   </div>
 
+  <div class="modal" id="slotModal" hidden>
+    <form class="modal-box slot-box" id="slotForm" role="dialog" aria-modal="true" aria-labelledby="slotTitle">
+      <h3 id="slotTitle">도면 올리기</h3>
+      <p class="muted" id="slotSub">어느 공정 단위의 어떤 도면인지 고르세요.</p>
+      <div class="slot-form">
+        <label class="slot-unit">공정 단위 <select id="slotUnit"></select></label>
+        <div class="slot-doc" role="radiogroup" aria-label="도면 종류">
+          <label><input type="radio" name="slotDoc" value="pfd" /> PFD</label>
+          <label><input type="radio" name="slotDoc" value="pid" /> P&amp;ID</label>
+        </div>
+      </div>
+      <ul class="slot-files" id="slotFiles" hidden></ul>
+      <div class="slot-actions">
+        <button class="btn" id="slotCancel" type="button">취소</button>
+        <button class="btn primary" id="slotOk" type="submit">파일 선택</button>
+      </div>
+    </form>
+  </div>
+
   <div class="modal" id="mbModal" hidden>
     <div class="modal-box mb-box" role="dialog" aria-modal="true" aria-labelledby="mbTitle">
       <div class="modal-head">

@@ -31,7 +31,7 @@ export async function setupChatMode(ui) {
     return { upload() {}, request() {}, saveMassBalance() {}, setSlot() {}, refresh() { $('#btnPick').disabled = true; $('#btnAnalyze').disabled = true; } };
   }
   notice.className = 'notice info';
-  notice.innerHTML = '<b>사용 방법</b> ① 공정 Flow에서 단위와 PFD / P&amp;ID를 고르고 ② <b>도면 올리기</b>로 범례와 도면 PDF를 올린 뒤 ③ <b>분석 요청</b>을 누르고 ④ Claude Code 채팅에 "BL3U · PFD 분석 요청했어"처럼 알려 주세요. 분석은 채팅에서 진행되고, 끝나면 이 페이지에 결과가 자동으로 표시됩니다.';
+  notice.innerHTML = '<b>사용 방법</b> ① <b>도면 올리기</b>를 눌러 공정 단위와 PFD / P&amp;ID를 고른 뒤 ② 범례와 도면 PDF를 올리고 ③ <b>분석 요청</b>을 누르고 ④ Claude Code 채팅에 "BL3U · PFD 분석 요청했어"처럼 알려 주세요. 분석은 채팅에서 진행되고, 끝나면 이 페이지에 결과가 자동으로 표시됩니다.';
   if (!assets) {
     $('#btnPick').disabled = true;
     notice.innerHTML += '<br>도면은 이 페이지의 소유자와 편집자만 올릴 수 있습니다.';

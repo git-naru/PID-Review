@@ -131,7 +131,8 @@ function initStatic(notice) {
 // ------------------------------------------------------------------ 업로드
 function bindUpload() {
   const input = $('#fileInput');
-  $('#btnPick').addEventListener('click', () => input.click());
+  // 올리기 전에 공정 단위와 PFD / P&ID를 먼저 고른다
+  $('#btnPick').addEventListener('click', () => askSlot('pdf'));
   input.addEventListener('change', () => {
     addFiles([...input.files]);
     input.value = '';
@@ -139,7 +140,11 @@ function bindUpload() {
   $('#btnAnalyze').addEventListener('click', analyze);
   $('#btnDemo').addEventListener('click', loadDemo);
   const mbInput = $('#mbInput');
-  $('#btnMb').addEventListener('click', () => mbInput.click());
+  $('#btnMb').addEventListener('click', () => askSlot('mb'));
+  $('#slotUnit').innerHTML = $('#unitSelect').innerHTML;
+  $('#slotForm').addEventListener('submit', (e) => { e.preventDefault(); confirmSlot(); });
+  $('#slotCancel').addEventListener('click', closeSlot);
+  $('#slotModal').addEventListener('click', (e) => { if (e.target.id === 'slotModal') closeSlot(); });
   mbInput.addEventListener('change', () => {
     const f = mbInput.files[0];
     mbInput.value = '';
@@ -159,7 +164,11 @@ function bindUpload() {
   });
   $('#mbModal').addEventListener('click', (e) => { if (e.target.id === 'mbModal') closeMbTable(); });
   $('#mbCsv').addEventListener('click', () => mbTableState && download(`massbalance-${mbTableState.streams.map((x) => x.id).join('_').slice(0, 60)}.csv`, '\ufeff' + mbTableCsv(mbTableState), 'text/csv;charset=utf-8'));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#mbModal').hidden) closeMbTable(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('#slotModal').hidden) closeSlot();
+    else if (!$('#mbModal').hidden) closeMbTable();
+  });
 
   let depth = 0;
   window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; $('#dropOverlay').hidden = false; } });
@@ -170,7 +179,10 @@ function bindUpload() {
     e.preventDefault();
     depth = 0;
     $('#dropOverlay').hidden = true;
-    addFiles([...e.dataTransfer.files]);
+    const files = [...e.dataTransfer.files];
+    // 보기 전용 파일에는 도면을 넣을 수 없으므로 안내만 (물질수지는 넣을 수 있음)
+    if (MODE === 'static' && !files.some(isMassBalanceFile)) { addFiles(files); return; }
+    askSlot(files.every(isMassBalanceFile) ? 'mb' : 'pdf', files);
   });
 
   $('#btnExport').addEventListener('click', (e) => { e.stopPropagation(); $('#exportMenu').hidden = !$('#exportMenu').hidden; });
@@ -179,6 +191,45 @@ function bindUpload() {
     const kind = e.target.closest('[data-export]')?.dataset.export;
     if (kind) exportData(kind);
   });
+}
+
+/**
+ * 올리기 전 선택 창: 공정 단위와 PFD / P&ID를 고르면 그 묶음으로 바꾼 뒤
+ * 끌어다 놓은 파일(files)은 바로 넣고, 아니면 파일 선택 창을 연다.
+ */
+let slotPick = null;
+function askSlot(kind, files = null) {
+  slotPick = { kind, files };
+  const label = kind === 'mb' ? '물질수지 입력' : $('#btnPick').textContent;
+  $('#slotTitle').textContent = label;
+  $('#slotSub').textContent = kind === 'mb' ? '어느 공정 단위 · 도면 종류의 물질수지인지 고르세요.' : '어느 공정 단위의 어떤 도면인지 고르세요.';
+  $('#slotUnit').value = state.unit;
+  document.querySelector(`input[name="slotDoc"][value="${state.doc}"]`).checked = true;
+  $('#slotFiles').hidden = !files;
+  $('#slotFiles').innerHTML = (files || []).map((f) => `<li>${esc(f.name)}</li>`).join('');
+  $('#slotOk').textContent = files ? (kind === 'mb' ? '입력' : '올리기') : '파일 선택';
+  $('#slotModal').hidden = false;
+  $('#slotUnit').focus();
+}
+
+function closeSlot() {
+  $('#slotModal').hidden = true;
+  slotPick = null;
+}
+
+function confirmSlot() {
+  const pick = slotPick;
+  if (!pick) return;
+  const unit = $('#slotUnit').value;
+  const doc = document.querySelector('input[name="slotDoc"]:checked')?.value || state.doc;
+  if ($('#unitSelect').disabled && slotKey(unit, doc) !== slotKey()) {
+    toast('분석 중에는 다른 공정 단위 · 도면 종류로 바꿀 수 없습니다. 분석이 끝난 뒤 다시 시도해 주세요.', true);
+    return;
+  }
+  closeSlot();
+  setSlot(unit, doc);
+  if (pick.files) addFiles(pick.files);
+  else (pick.kind === 'mb' ? $('#mbInput') : $('#fileInput')).click();
 }
 
 const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
@@ -721,7 +772,7 @@ function bindFullscreen() {
   document.addEventListener('fullscreenchange', () => set(Boolean(document.fullscreenElement)));
   // 창 안 전체화면은 Esc로 나간다 (열린 창이 있으면 그 창이 먼저 닫히도록 캡처 단계에서 확인)
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && card.classList.contains('full') && !document.fullscreenElement && $('#mbModal').hidden && $('#viewer').hidden) set(false);
+    if (e.key === 'Escape' && card.classList.contains('full') && !document.fullscreenElement && $('#mbModal').hidden && $('#viewer').hidden && $('#slotModal').hidden) set(false);
   }, true);
 }
 
