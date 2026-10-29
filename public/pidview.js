@@ -15,6 +15,9 @@ export function createPidView(container, ui) {
   const msg = container.querySelector('.pv-msg');
 
   const v = { result: null, key: null, page: null, pw: 0, ph: 0, W: 0, H: 0, z: 1, tx: 0, ty: 0, task: null, seq: 0, rendered: '' };
+  // 도면별로 마지막 확대·이동 상태를 기억 (보기 방식을 바꿨다 돌아와도 그대로)
+  const views = new Map();
+  const remember = () => { if (v.key && v.page) views.set(v.key, { z: v.z, tx: v.tx, ty: v.ty, cw: container.clientWidth, ch: container.clientHeight }); };
   const filter = { instruments: false, utility: true };
   let selected = new Set();
 
@@ -22,6 +25,7 @@ export function createPidView(container, ui) {
   const apply = () => {
     stage.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.z})`;
     stage.style.setProperty('--z', v.z);
+    remember();
   };
   const base = () => {
     const cw = container.clientWidth, ch = container.clientHeight;
@@ -33,12 +37,32 @@ export function createPidView(container, ui) {
     canvas.style.width = `${v.W}px`;
     canvas.style.height = `${v.H}px`;
   };
+  /** 화면 맞춤: 도면 전체가 보이게 */
   function fit() {
     if (!v.page) return;
     base();
     v.z = 1;
     v.tx = (container.clientWidth - v.W) / 2;
     v.ty = (container.clientHeight - v.H) / 2;
+    apply();
+    scheduleRender();
+  }
+  /** 폭맞춤: 도면 가로 폭을 화면 폭에 맞추고 위쪽부터 */
+  function fitWidth() {
+    if (!v.page) return;
+    base();
+    v.z = Math.min(MAX_Z, Math.max(1, (container.clientWidth - 8) / v.W));
+    v.tx = (container.clientWidth - v.W * v.z) / 2;
+    v.ty = 4;
+    apply();
+    scheduleRender();
+  }
+  /** 도면을 열 때: 전에 보던 상태가 있으면 그대로, 없으면 폭맞춤 */
+  function restore() {
+    const saved = views.get(v.key);
+    if (!saved) { fitWidth(); return; }
+    base();
+    Object.assign(v, { z: saved.z, tx: saved.tx, ty: saved.ty });
     apply();
     scheduleRender();
   }
@@ -85,7 +109,18 @@ export function createPidView(container, ui) {
   const end = () => { drag = null; container.classList.remove('dragging'); };
   container.addEventListener('pointerup', end);
   container.addEventListener('pointercancel', end);
-  new ResizeObserver(() => { if (v.page && container.clientWidth) fit(); }).observe(container);
+  // 숨겨졌다 다시 보일 때(보기 방식 전환)는 크기가 같으므로 보던 상태를 유지하고, 실제 크기가 바뀔 때만 맞춘다
+  let lastSize = '';
+  new ResizeObserver(() => {
+    const size = `${container.clientWidth}x${container.clientHeight}`;
+    if (!v.page || !container.clientWidth || size === lastSize) return;
+    const first = !lastSize;
+    lastSize = size;
+    if (first) return;
+    base();
+    apply();
+    scheduleRender();
+  }).observe(container);
 
   // ---- 표시 항목 클릭
   marks.addEventListener('click', (e) => {
@@ -189,7 +224,8 @@ export function createPidView(container, ui) {
         msg.textContent = `도면을 표시할 수 없습니다: ${err.message}`;
         return;
       }
-      fit();
+      lastSize = `${container.clientWidth}x${container.clientHeight}`;
+      restore();
     }
     buildMarks();
   }
@@ -214,12 +250,13 @@ export function createPidView(container, ui) {
     /** reload: 원본 PDF가 바뀌었을 때(새 분석) 도면을 다시 연다 */
     show(result, key, reload = false) {
       v.result = result;
-      if (reload) v.key = null;
+      if (reload) { v.key = null; views.clear(); }
       return setPage(key);
     },
     setPage,
     highlight,
     fit,
+    fitWidth,
     refresh: buildMarks,
     setFilter(f) { Object.assign(filter, f); buildMarks(); },
     reset() { v.result = null; v.key = null; v.page = null; marks.innerHTML = ''; },

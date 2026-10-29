@@ -5,7 +5,7 @@ import { normalizeTag } from './shared/pidText.js';
 import { createPidView } from './pidview.js';
 import {
   readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
-  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey,
+  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey, formatGpl, LI_KEY,
 } from './shared/massbalance.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
@@ -385,7 +385,8 @@ function renderMbChip() {
 const optLabel = (o) => (o.unit ? `${o.name} (${o.unit})` : o.name);
 const currentValueKey = () => $('#flowValue').value;
 const currentOption = () => state.valueOptions.find((o) => o.key === currentValueKey()) || null;
-const valueOf = (l, key = currentValueKey()) => (key && l.kind !== 'signal' ? lineValue(l, key, (id) => state.lineStream.get(id)) : null);
+const valueOf = (l, key = currentValueKey()) => (key && l.kind !== 'signal'
+  ? lineValue(l, key, (id) => state.lineStream.get(id), state.result?.mass_balance?.properties) : null);
 const valueText = (v, opt = currentOption()) => (v ? `${formatValue(v.value)}${opt?.unit ? ` ${opt.unit}` : ''}` : '');
 const mbStreams = () => state.result?.mass_balance?.streams || [];
 const streamById = (id) => mbStreams().find((s) => s.id === id);
@@ -541,6 +542,16 @@ function bindFlowToolbar() {
     renderDetail();
   });
   $('#btnFit').addEventListener('click', () => (state.flowMode === 'basic' ? pv.fit() : cy?.fit(cy.elements(':visible'), 30)));
+  $('#btnFitWidth').addEventListener('click', () => {
+    if (state.flowMode === 'basic') { pv.fitWidth(); return; }
+    if (!cy) return;
+    // 자동배치: 가로 폭에 맞추고 위쪽부터
+    const bb = cy.elements(':visible').boundingBox();
+    if (!bb.w) return;
+    const z = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), (cy.width() - 40) / bb.w));
+    cy.zoom(z);
+    cy.pan({ x: 20 - bb.x1 * z, y: 20 - bb.y1 * z });
+  });
 }
 
 function setFlowMode(mode) {
@@ -550,8 +561,8 @@ function setFlowMode(mode) {
   markFlowMode();
   if (state.result) {
     renderFlow();
-    const sel = state.selected;
-    if (sel) select(sel);
+    // 보던 위치를 유지하도록 선택 표시만 다시 한다 (화면 이동 없음)
+    if (state.selected) highlightInFlow(selectedIds(state.selected), false);
   }
 }
 
@@ -798,6 +809,12 @@ function highlightInFlow(ids, focus) {
 }
 
 // ------------------------------------------------------------------ 선택 / 상세
+function selectedIds(sel) {
+  if (sel.type === 'issue') return issueById(sel.id)?.related_ids || [];
+  if (sel.type === 'stream') return mbLinesOf(sel.id).map((l) => l.id);
+  return [sel.id];
+}
+
 function select(sel, from) {
   state.selected = sel;
   let ids = [sel.id];
@@ -910,7 +927,7 @@ function streamValuesTable(st) {
   return `<table class="kv wide">${props.map((p) => `<tr${p.key === key ? ' class="hl-row"' : ''}><th>${esc(p.name)}${p.unit ? ` <span class="muted">${esc(p.unit)}</span>` : ''}</th><td>${esc(formatValue(st.values[p.key]))}</td></tr>`).join('')}</table>`;
 }
 
-const fmtGpl = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 10 ? 1 : v >= 1 ? 2 : 3 });
+const fmtGpl = formatGpl;
 const hasLithium = () => mbStreams().some((st) => lithiumGpl(st, state.result.mass_balance.properties));
 function lithiumCell(st) {
   const li = lithiumGpl(st, state.result.mass_balance.properties);
@@ -1186,14 +1203,14 @@ const MB_DEF = {
     return { ...st, lines, issue_ids: [], flag: !lines.length };
   }),
   cols: () => [['No', 44], ['Stream', 80], ['설명', 200], ['From', 110], ['To', 110], ...(currentOption() ? [[optLabel(currentOption()), 120]] : []),
-    ...(hasLithium() ? [['Li (g/L)', 84]] : []), ['도면 매칭', 170], ['방법', 96]],
+    ...(hasLithium() && currentValueKey() !== LI_KEY ? [['Li (g/L)', 84]] : []), ['도면 매칭', 170], ['방법', 96]],
   cells: (st, i) => {
     const opt = currentOption();
     const m = state.result.mass_balance.matches.find((x) => x.stream_id === st.id);
     return [
       i + 1, `<span class="tag">${esc(st.id)}</span>`, esc(st.description), esc(st.from), esc(st.to),
-      ...(opt ? [st.values[opt.key] !== undefined ? esc(formatValue(st.values[opt.key])) : '<span class="muted">-</span>'] : []),
-      ...(hasLithium() ? [lithiumCell(st)] : []),
+      ...(opt ? [opt.key === LI_KEY ? lithiumCell(st) : st.values[opt.key] !== undefined ? esc(formatValue(st.values[opt.key])) : '<span class="muted">-</span>'] : []),
+      ...(hasLithium() && currentValueKey() !== LI_KEY ? [lithiumCell(st)] : []),
       st.lines.length ? esc(st.lines.map((l) => l.line_no || l.id).filter((v, k, a) => a.indexOf(v) === k).join(', ')) : '<span class="warn">도면에 없음</span>',
       m ? esc(matchMethodLabel(m.method)) : '',
     ];

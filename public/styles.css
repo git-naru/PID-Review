@@ -151,7 +151,7 @@ button { font: inherit; }
 .toolbar label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
 .hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
-.flow-wrap { position: relative; height: 540px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+.flow-wrap { position: relative; height: clamp(540px, 72vh, 860px); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
   background: var(--canvas); background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: 18px 18px; }
 #cy { position: absolute; inset: 0; }
 /* Flow 보기 방식 선택 */

@@ -342,6 +342,9 @@ export function toNumber(v) {
   return m ? Number(m[0]) : NaN;
 }
 
+/** Li 농도 표시: 10 이상 소수 1자리, 1 이상 2자리, 그 밖에는 3자리 */
+export const formatGpl = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 10 ? 1 : v >= 1 ? 2 : 3 });
+
 /** 표시용 숫자 정리 (엑셀의 36.123456789 → 36.12) */
 export function formatValue(v) {
   const s = String(v ?? '').trim();
@@ -495,8 +498,13 @@ const countSeverity = (issues) => issues.reduce((a, i) => { a[i.severity] = (a[i
  * Flow에 표시할 수 있는 값 목록: 물질수지 속성 + 도면 스트림 표 항목 (같은 이름·단위는 하나로)
  * @returns {Array<{key, name, unit, flow:boolean}>}
  */
+export const LI_KEY = 'li:gpl';
+
 export function valueOptions(result) {
   const out = new Map();
+  // 물질수지에서 계산한 Li 농도(g/L)도 표시 항목으로 고를 수 있다
+  const mbx = result.mass_balance;
+  if (mbx?.streams.some((st) => lithiumGpl(st, mbx.properties))) out.set(LI_KEY, { key: LI_KEY, name: 'Li 농도', unit: 'g/L', flow: false });
   for (const p of result.mass_balance?.properties || []) out.set(p.key, { key: p.key, name: p.name, unit: p.unit, flow: !p.group && FLOW_RE.test(p.name) });
   for (const l of result.lines) {
     for (const sp of l.specs || []) {
@@ -518,8 +526,12 @@ export function defaultValueKey(options) {
 }
 
 /** 라인 하나의 표시 값: 매칭된 물질수지 값 우선, 없으면 도면 스트림 표 값 */
-export function lineValue(line, key, streamOf) {
+export function lineValue(line, key, streamOf, properties = []) {
   const s = streamOf(line.id);
+  if (key === LI_KEY) {
+    const li = s ? lithiumGpl(s, properties) : null;
+    return li ? { value: `${formatGpl(li.gpl)}${li.basis === 'stream' ? '*' : ''}`, source: 'mb', stream: s, li } : null;
+  }
   if (s && s.values[key] !== undefined) return { value: s.values[key], source: 'mb', stream: s };
   const sp = (line.specs || []).find((x) => specKey(x.name) === key);
   return sp ? { value: sp.value, source: 'drawing' } : null;
