@@ -73,6 +73,9 @@
   - 이미 선택한 것을 다시 누르면 선택이 취소된다(Flow·리스트).
 - **연결목록 체크**: 선택 항목 아래에 ◀ From / To ▶ 이동 버튼을 띄운다. Off-page에서는 연결 도면으로 넘어간다.
 - **Main Stream 체크**: 범례(SYMBOLS)의 "MAIN FLOW" 견본 선과 굵기·색이 같은 선을 주황색(투명도 80%)으로 표시한다. 견본이 없는 도면에서는 표시하지 않는다.
+  - 색을 지정하지 않은 선은 PDF 기본색(검정)으로 본다. 0003번은 견본만 색 지정이 없어 누락됐었다.
+  - POSCO 0006~0008번은 MAIN FLOW 굵기(2.04)의 공정선이 없어 표시되지 않는 것이 맞다.
+- **용어**: Pond 등 도면 용어는 번역하지 않는다("연못" 대신 "Pond"). 판독 지시문(`shared/prompts.js` RULES)과 `doc.json` 요약에도 적용한다.
 
 ### 작업 관례
 - 페이지 코드를 고치면 `npm test`와 `npm run build:artifact`를 실행한다.
@@ -87,7 +90,7 @@
 - **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
   - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
   - 채팅 분석 페이지에 저장된 데이터
-    - db `jobs/current`(BL3U · PFD 묶음): `status: done`, 결과 asset `6deebc1e2942be9a27c3507769ccf644`
+    - db `jobs/current`(BL3U · PFD 묶음): `status: done`, 결과 asset `beb65a8b7b692540ded29fb87b314cd2`("연못"→"Pond" 수정본, 이전 `6deebc1e…`)
     - 원본 PDF 8개는 페이지 assets에 있다(asset id는 결과 JSON의 `files[].assetId`).
 - **실제 물질수지 반영**: `319020-00626-0000-PR-CAL-00001_B.xlsx`
   - 46개 스트림 모두 매칭됐다.
@@ -118,7 +121,7 @@
 11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html>`
 
 **POSCO 결과 HTML 다시 만들기** (새 세션)
-1. 결과 asset `6deebc1e…`과 PDF asset 8개, 물질수지 asset `1f5619f3…`을 `Artifact read`로 받는다.
+1. 결과 asset `beb65a8b…`과 PDF asset 8개, 물질수지 asset `1f5619f3…`을 `Artifact read`로 받는다.
 2. PDF는 원래 파일명으로 한 폴더에 둔다.
 3. `node scripts/apply-massbalance.mjs result.json mb.json result-mb.json`
 4. `node scripts/build-standalone.mjs result-mb.json <PDF 폴더> POSCO_CP3_PFD_분석결과.html`

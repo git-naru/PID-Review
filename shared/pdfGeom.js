@@ -18,7 +18,7 @@ export async function extractGeometry(page, OPS, Util) {
   const vp = page.getViewport({ scale: 1 });
   const W = vp.width, H = vp.height;
   let ctm = [1, 0, 0, 1, 0, 0];
-  let dashed = false, lw = 1, color = '';
+  let dashed = false, lw = 1, color = '#000000'; // PDF 기본 선 색은 검정
   const stack = [];
   const segs = [], fills = [];
   const pt = (x, y) => {

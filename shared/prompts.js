@@ -35,7 +35,8 @@ export const RULES = `- Never invent data. If a value is not on the drawing, use
 - Coordinates: a text layer with normalized centre coordinates (0-1, origin top-left) is provided for each page.
   Use it to place bbox precisely around the tag text or symbol. For scanned pages without text layer, estimate from the image.
 - "from_id"/"to_id" must be ids that exist in "nodes", or empty string.
-- Write summaries, issue titles and descriptions in Korean. Keep tags, line numbers and spec values in the original language.`;
+- Write summaries, issue titles and descriptions in Korean. Keep tags, line numbers and spec values in the original language.
+- Keep equipment and area terms as written on the drawing instead of translating them (e.g. write "Pond", not "연못"; "Evaporation Pond", "Mother Liquor Pond").`;
 
 // ---------------------------------------------------------------- 브라우저 단계별 분석용 프롬프트
 
