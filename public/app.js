@@ -822,7 +822,7 @@ function streamDetail(st) {
       ${st.from ? `<tr><th>From</th><td>${esc(st.from)}</td></tr>` : ''}
       ${st.to ? `<tr><th>To</th><td>${esc(st.to)}</td></tr>` : ''}
       ${st.line_no ? `<tr><th>Line No.</th><td>${esc(st.line_no)}</td></tr>` : ''}
-      <tr><th>파일</th><td>${esc(mbx.name)}${mbx.sheet && mbx.sheet !== mbx.name ? ` · ${esc(mbx.sheet)}` : ''}</td></tr>
+      <tr><th>파일</th><td>${esc(mbx.name)}${(st.sheet || mbx.sheet) && (st.sheet || mbx.sheet) !== mbx.name ? ` · ${esc(st.sheet || mbx.sheet)}` : ''}</td></tr>
     </table>
     <h4>도면 매칭 (${lines.length})</h4>
     ${lines.length ? `<ul>${lines.map((l) => `<li>${goLine(l)} <span class="muted">${esc(method(l.id))} · ${esc(drawingLabel(l.loc))}</span></li>`).join('')}</ul>` : '<p class="muted" style="color:var(--high)">입력한 도면에서 이 스트림을 찾지 못했습니다.</p>'}

@@ -12,12 +12,17 @@ export class MassBalanceError extends Error {}
 const STREAM_LABEL = /stream|스트림|^str\b|^no\.?$|^번호$/i;
 const ID_RE = /^(?:(?:stream|str|s)[\s.#-]*)?[A-Z]{0,3}-?\d{1,5}[A-Z]{0,2}$/i;
 const SPECIAL = [
-  ['description', /^(stream\s*)?(desc|description|service|name)\b|명칭|설명|서비스/i],
+  // "Unit" 열 머리글 행에 스트림 설명을 적는 양식도 있다
+  ['description', /^(stream\s*)?(desc|description|service|name)\b|명칭|설명|서비스|^units?$|^단위$/i],
   ['from', /^(from|source)\b|출발/i],
   ['to', /^(to|dest(ination)?)\b|도착/i],
   ['line_no', /^line\s*(no|number)\b|배관\s*번호|라인\s*번호/i],
 ];
 const FLOW_RE = /mass\s*flow|flow\s*rate|total\s*flow|질량\s*유량|유량/i;
+// 값 없는 제목 행: "NOMINAL FLOW"처럼 아래 항목 이름 앞에 붙는 구분, "OTHER VALUES"처럼 의미 없는 묶음, 그 밖에는 성분 묶음
+const QUALIFIER_SECTION = /^(nominal|normal|design|rated|operating|max(imum)?|min(imum)?|정상|설계)\b/i;
+const NEUTRAL_SECTION = /\b(other|values|properties|conditions|general|data)\b/i;
+const DASH = /^[-‐-―−]+$/;
 
 // ------------------------------------------------------------------ 파일 읽기
 /**
@@ -39,22 +44,36 @@ export async function readMassBalanceFile(name, buffer, { pdfjs } = {}) {
   } else {
     throw new MassBalanceError('물질수지는 엑셀(.xlsx), CSV, PDF 파일로 입력해 주세요.');
   }
-  let best = null;
+  // 시트(PDF는 페이지)마다 표를 읽고, 도면별로 시트가 나뉜 물질수지는 하나로 합친다
+  const parts = [];
   for (const t of tables) {
+    let best = null;
     const variants = t.grid ? [t.cells, transposeCells(t.cells)] : [t.cells];
     for (const cells of variants) {
       const parsed = parseMassBalance(cells);
       if (!parsed) continue;
       const score = parsed.streams.length * (1 + parsed.properties.length);
-      if (!best || score > best.score) best = { score, sheet: t.name, parsed };
+      if (!best || score > best.score) best = { score, parsed };
     }
+    if (best) parts.push({ sheet: t.name, ...best.parsed });
   }
-  if (!best) {
+  if (!parts.length) {
     throw new MassBalanceError(ext === 'pdf'
       ? 'PDF에서 스트림 번호 행을 찾지 못했습니다. 스캔한 PDF이거나 표 모양이 달라 읽을 수 없습니다. 엑셀(.xlsx)이나 CSV로 입력해 주세요.'
       : '스트림 번호 행을 찾지 못했습니다. 표 첫 열에 "Stream No." 같은 머리글이 있고, 그 행에 스트림 번호가 나란히 있는지 확인해 주세요.');
   }
-  return { name: String(name), sheet: best.sheet, ...best.parsed };
+  const properties = new Map(), streams = new Map();
+  for (const part of parts) {
+    for (const p of part.properties) if (!properties.has(p.key)) properties.set(p.key, p);
+    for (const st of part.streams) {
+      const prev = streams.get(st.key);
+      if (!prev) { streams.set(st.key, { ...st, sheet: part.sheet }); continue; }
+      for (const f of ['description', 'from', 'to', 'line_no']) prev[f] ||= st[f];
+      for (const [k, v] of Object.entries(st.values)) prev.values[k] ??= v;
+    }
+  }
+  const sheet = parts.length === 1 ? parts[0].sheet : `시트 ${parts.length}개`;
+  return { name: String(name), sheet, properties: [...properties.values()], streams: [...streams.values()] };
 }
 
 // ---- xlsx: zip(deflate) + XML. 별도 라이브러리 없이 필요한 부분만 읽는다
@@ -231,24 +250,31 @@ export function parseMassBalance(rows) {
       const cx = (cell.x0 + cell.x1) / 2;
       if (cx < block.left || cell.x1 <= block.firstX0) { labels.push(cell.text); continue; }
       const col = block.cols.find((c) => cx >= c.lo && cx < c.hi);
-      if (col) values.set(col.key, values.has(col.key) ? `${values.get(col.key)} ${cell.text}` : cell.text);
+      if (col && !DASH.test(cell.text)) values.set(col.key, values.has(col.key) ? `${values.get(col.key)} ${cell.text}` : cell.text);
     }
     if (!labels.length) continue;
     let { name, unit } = splitLabel(labels);
     if (!values.size) {
-      // 값이 없는 제목 행: 아래 성분 행들의 묶음 이름과 단위
-      group = { name, unit };
+      if (row.some((c) => (c.x0 + c.x1) / 2 >= block.left)) continue; // 값이 모두 "-"인 행
+      group = QUALIFIER_SECTION.test(name) ? { prefix: titleCase(name.replace(/\s*flows?\s*$/i, '')), name: '', unit }
+        : NEUTRAL_SECTION.test(name) ? { name: '', unit } : { name, unit };
       continue;
     }
-    const special = SPECIAL.find(([, re]) => re.test(name))?.[0];
+    // 병합 셀로 표 제목이 같은 행에 채워질 수 있어 칸별로도 확인한다
+    const special = SPECIAL.find(([, re]) => re.test(name) || labels.some((l) => re.test(l)))?.[0];
     if (special) {
       for (const [k, v] of values) streams.get(k)[special] ||= v;
       continue;
     }
     let groupName = '';
-    if (!unit && group) { unit = group.unit; groupName = group.name; }
+    if (group) {
+      unit ||= group.unit;
+      if (group.prefix) name = `${group.prefix} ${name}`;
+      groupName = group.name;
+    }
     const key = propertyKey(name, unit, groupName);
-    if (!properties.has(key)) properties.set(key, { key, name: groupName ? `${name} (${groupName})` : name, unit, group: groupName });
+    const groupLabel = /[a-z]/.test(groupName) ? groupName : titleCase(groupName);
+    if (!properties.has(key)) properties.set(key, { key, name: groupName ? `${name} (${groupLabel})` : name, unit, group: groupName });
     for (const [k, v] of values) streams.get(k).values[key] ??= v;
   }
   const used = [...properties.values()].filter((p) => [...streams.values()].some((s) => s.values[p.key] !== undefined));
@@ -276,7 +302,8 @@ function headerOf(row) {
   return { cols, left: cols[0].lo, firstX0: ids[0].x0 };
 }
 
-const isUnit = (t) => t.length <= 16 && (/^[[(].*[\])]$/.test(t) || /[/%°℃³]/.test(t)
+const titleCase = (t) => t.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+const isUnit = (t) => t.length <= 16 && (DASH.test(t) || /^[[(].*[\])]$/.test(t) || /[/%°℃³]/.test(t)
   || /^(kPa|MPa|Pa|bar|barg|bara|psi|psig|psia|cP|K|pH|kW|MW|mm|ppm\w*|-)(\s*\(?[ag]\)?)?$/i.test(t));
 
 /** 머리글 칸들 → 속성 이름과 단위 ("Mass flow | kg/h", "Mass flow (kg/h)", "Mass flow, kg/h") */
@@ -289,7 +316,8 @@ export function splitLabel(labels) {
   const m = [name.match(/^(.*?)\s*[[(]([^[\]()]{1,16})[\])]\s*$/), name.match(/^(.*?),\s*([^,]{1,16})$/)]
     .find((x) => x && x[1] && isUnit(x[2].trim()));
   if (!unit && m) { name = m[1]; unit = m[2].trim(); }
-  return { name: name.trim(), unit: unit.replace(/^[[(]\s*(.*?)\s*[\])]$/, '$1') };
+  unit = unit.replace(/^[[(]\s*(.*?)\s*[\])]$/, '$1');
+  return { name: name.trim(), unit: DASH.test(unit) ? '' : unit }; // "-", "―": 무차원
 }
 
 // ------------------------------------------------------------------ 비교용 정규화
@@ -362,7 +390,10 @@ export function applyMassBalance(result, mb) {
   const propFor = (specName) => {
     const k = specKey(specName);
     const [n, u] = k.split('|');
-    return mb.properties.find((p) => p.key === k) || mb.properties.find((p) => !p.group && p.key.split('|')[0] === n && (!u || !p.unit));
+    const exact = mb.properties.find((p) => p.key === k);
+    if (exact) return exact;
+    const same = mb.properties.filter((p) => { const [pn, pu] = p.key.split('|'); return pn === n && (!u || !pu || pu === u); });
+    return same.length === 1 ? same[0] : null;
   };
   for (const l of flowLines) {
     const s = matched.get(l.id);

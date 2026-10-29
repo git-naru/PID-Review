@@ -27,7 +27,7 @@ test('엑셀과 CSV 물질수지를 같은 내용으로 읽는다 (단위 열, �
   const csv = await readMassBalanceFile('PID-100-MB.csv', await read('PID-100-MB.csv'));
   assert.equal(xlsx.sheet, 'H&MB');
   // 엑셀은 숫자를 값으로 저장하므로("25.0" → 25) 숫자로 비교
-  const norm = (mb) => JSON.stringify(mb.streams, (k, v) => (typeof v === 'string' && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : v));
+  const norm = (mb) => JSON.stringify(mb.streams, (k, v) => (k === 'sheet' ? undefined : typeof v === 'string' && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : v));
   assert.equal(norm(xlsx), norm(csv));
   assert.equal(xlsx.streams.length, 8);
   const s3 = xlsx.streams.find((s) => s.id === '3');
@@ -48,6 +48,25 @@ test('스트림이 행 방향인 표, 블록이 여러 개인 표도 읽는다',
   ]));
   assert.deepEqual(blocks.streams.map((s) => s.values['massflow|kg/h']), ['10', '20', '30', '40']);
   assert.equal(parseMassBalance(grid([['Temperature', '25', '30', '35']])), null, '스트림 머리글 없는 숫자 행은 머리글이 아님');
+});
+
+test('구분 제목 행: NOMINAL/DESIGN은 이름 앞에, OTHER VALUES는 무시, 성분 묶음은 뒤에 붙인다', () => {
+  const mb = parseMassBalance(grid([
+    ['AREA TITLE', 'Stream', '1101', '1103'],
+    ['AREA TITLE', 'Unit', 'Raw brine', 'PC brine'], // 병합 셀로 제목이 채워진 설명 행
+    ['NOMINAL FLOW', '', '', ''],
+    ['Mass Flow', 't/h', '1302.7', '538.2'],
+    ['DESIGN FLOW', '', '', ''],
+    ['Mass Flow', 't/h', '1693.5', '699.7'],
+    ['OTHER VALUES', '', '', ''],
+    ['Density', 't/m3', '1.208', '-'],
+    ['Design Factor', '―', '1.3', '1.3'],
+    ['LIQUID CHEMICAL COMPOSITION', '', '', ''],
+    ['Li+', '% w/w', '0.064', '0.15'],
+  ]));
+  assert.deepEqual(mb.streams.map((s) => s.description), ['Raw brine', 'PC brine']);
+  assert.deepEqual(mb.properties.map((p) => p.key), ['nominalmassflow|t/h', 'designmassflow|t/h', 'density|t/m3', 'designfactor|', 'li+|%w/w|liquidchemicalcomposition']);
+  assert.equal(mb.streams[1].values['density|t/m3'], undefined, '"-"는 값 없음');
 });
 
 test('이름·단위 분리와 스트림 번호 정규화', () => {
