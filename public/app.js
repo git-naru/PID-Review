@@ -2,6 +2,7 @@ import * as pdfjsLib from './vendor/pdf.min.mjs';
 import { analyzeInBrowser } from './engine.js';
 import { setupChatMode } from './chatmode.js';
 import { normalizeTag } from './shared/pidText.js';
+import { createPidView } from './pidview.js';
 import {
   readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
   valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey,
@@ -42,7 +43,13 @@ const state = {
   flowKey: null, // Flow에 표시할 값 (null: 자동 선택, '': 표시 안 함)
   valueOptions: [],
   lineStream: new Map(), // 라인 id → 매칭된 물질수지 스트림
+  flowMode: loadFlowMode(), // 'basic': 원본 도면 형식, 'auto': 자동배치
+  pvSources: null, // 기본 보기에 열려 있는 PDF 묶음
 };
+
+function loadFlowMode() {
+  try { return localStorage.getItem('pid.flowMode') === 'auto' ? 'auto' : 'basic'; } catch { return 'basic'; }
+}
 
 // ------------------------------------------------------------------ 초기화
 async function init() {
@@ -510,7 +517,22 @@ const nodeName = (id) => { const n = nodeById(id); return n ? (n.tag || n.name |
 // ------------------------------------------------------------------ Flow (Cytoscape)
 let cy = null;
 
+let pv = null; // 기본(원본 도면) 보기
+
 function bindFlowToolbar() {
+  pv = createPidView($('#pidView'), {
+    getPdf,
+    select,
+    open: openItem,
+    valueText: (l) => { const opt = currentOption(); return opt ? valueText(valueOf(l, opt.key), opt) : ''; },
+    linkTarget: (id) => {
+      const k = state.result?.links.find((x) => x.from_id === id || x.to_id === id);
+      return k ? nodeById(k.from_id === id ? k.to_id : k.from_id) : null;
+    },
+    goPage: (key) => { $('#drawingFilter').value = key; },
+  });
+  document.querySelectorAll('#flowMode [data-mode]').forEach((b) => b.addEventListener('click', () => setFlowMode(b.dataset.mode)));
+  markFlowMode();
   ['#optInstruments', '#optUtility', '#drawingFilter'].forEach((s) => $(s).addEventListener('change', applyFlowFilter));
   $('#flowValue').addEventListener('change', () => {
     state.flowKey = currentValueKey();
@@ -518,10 +540,60 @@ function bindFlowToolbar() {
     renderList();
     renderDetail();
   });
-  $('#btnFit').addEventListener('click', () => cy?.fit(cy.elements(':visible'), 30));
+  $('#btnFit').addEventListener('click', () => (state.flowMode === 'basic' ? pv.fit() : cy?.fit(cy.elements(':visible'), 30)));
+}
+
+function setFlowMode(mode) {
+  if (mode === state.flowMode) return;
+  state.flowMode = mode;
+  try { localStorage.setItem('pid.flowMode', mode); } catch { /* 저장 불가 시 이번 화면에만 적용 */ }
+  markFlowMode();
+  if (state.result) {
+    renderFlow();
+    const sel = state.selected;
+    if (sel) select(sel);
+  }
+}
+
+function markFlowMode() {
+  const basic = state.flowMode === 'basic';
+  document.querySelectorAll('#flowMode [data-mode]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === state.flowMode);
+    b.setAttribute('aria-pressed', String(b.dataset.mode === state.flowMode));
+  });
+  $('#cy').hidden = basic;
+  $('#pidView').hidden = !basic;
+  $('#legendAuto').hidden = basic;
+  $('#legendBasic').hidden = !basic;
+  $('#flowHint').textContent = basic
+    ? '원본 도면 위의 설비·Line No.를 클릭하면 상세 정보가 표시됩니다. 더블클릭: 확대 보기, Off-page는 연결 도면으로 이동. 휠: 확대/축소, 드래그: 이동'
+    : '설비나 라인을 클릭하면 상세 정보가 표시됩니다.';
+}
+
+/** 기본 보기는 도면 한 장씩: "전체 도면"이면 첫 P&ID 시트로 */
+function ensureSinglePage() {
+  const sel = $('#drawingFilter');
+  sel.querySelector('option[value="all"]').hidden = state.flowMode === 'basic';
+  if (state.flowMode !== 'basic' || sel.value !== 'all') return;
+  const r = state.result;
+  const first = r.drawings.find((d) => d.sheet_type === 'pid') || r.drawings.find((d) => d.sheet_type !== 'legend');
+  sel.value = first ? `${first.file_index}:${first.page}` : (sel.options[1]?.value || 'all');
 }
 
 function renderFlow() {
+  $('#flowEmpty').hidden = true;
+  ensureSinglePage();
+  if (state.flowMode === 'basic') {
+    const reload = state.pvSources !== state.sources;
+    state.pvSources = state.sources;
+    pv.setFilter({ instruments: $('#optInstruments').checked, utility: $('#optUtility').checked });
+    pv.show(state.result, $('#drawingFilter').value, reload);
+    return;
+  }
+  renderCy();
+}
+
+function renderCy() {
   const r = state.result;
   $('#flowEmpty').hidden = true;
   const els = [];
@@ -587,6 +659,7 @@ function renderFlow() {
 
 /** 라인 라벨에 선택한 값(유량 등)을 붙이고, 유량이면 선 굵기로도 보여준다 */
 function updateFlowValues() {
+  if (state.flowMode === 'basic') { pv.refresh(); return; }
   if (!cy) return;
   const opt = currentOption();
   const vals = new Map();
@@ -618,6 +691,12 @@ function nodeLabel(n) {
 }
 
 function applyFlowFilter() {
+  if (state.flowMode === 'basic') {
+    ensureSinglePage();
+    pv.setFilter({ instruments: $('#optInstruments').checked, utility: $('#optUtility').checked });
+    pv.setPage($('#drawingFilter').value);
+    return;
+  }
   if (!cy) return;
   const showIns = $('#optInstruments').checked;
   const showUt = $('#optUtility').checked;
@@ -708,6 +787,7 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
 new MutationObserver(() => cy?.style(flowStyle())).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 function highlightInFlow(ids, focus) {
+  if (state.flowMode === 'basic') { pv.highlight(ids, focus); return; }
   if (!cy) return;
   cy.elements().unselect();
   const eles = cy.collection();

@@ -108,6 +108,7 @@
 | `shared/prompts.js` | 판독 지침과 결과 형식 (서버·브라우저·세션 공용) |
 | `public/index.html`, `app.js`, `styles.css` | 화면 (Flow, 리스트, 검토 항목, 도면 뷰어, 실행 모드 분기) |
 | `public/engine.js` | 페이지에서 바로 분석 (단계별 호출, 이어서 분석, 시트 분할 재시도) |
+| `public/pidview.js` | Flow 기본 보기: 원본 PDF 도면 위에 설비·Line No. 클릭 영역, 유량 표시 (자동배치와 전환) |
 | `public/chatmode.js` | 채팅 분석 모드 (업로드 → 분석 요청 → 결과 표시) |
 | `shared/massbalance.js` | 물질수지 읽기(xlsx/csv/PDF), 도면 매칭, 불일치 검출, Flow 표시 값 |
 | `samples/PID-100-MB.xlsx`, `.csv`, `make_sample_mb.py` | 샘플 물질수지와 생성 스크립트 |

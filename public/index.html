@@ -78,6 +78,10 @@
       <div class="card-head">
         <h2>공정 Flow</h2>
         <div class="toolbar">
+          <div class="seg" id="flowMode" role="group" aria-label="Flow 보기 방식">
+            <button type="button" data-mode="basic" title="원본 PDF 도면 그대로 보기">기본</button>
+            <button type="button" data-mode="auto" title="설비·배관 연결을 자동으로 배치해 보기">자동배치</button>
+          </div>
           <select id="drawingFilter" title="도면 선택"><option value="all">전체 도면</option></select>
           <select id="flowValue" title="라인에 함께 표시할 스트림 값 (물질수지 또는 도면 스트림 표)" hidden></select>
           <label title="계기·밸브와 신호선/설치 위치 연결을 함께 표시"><input type="checkbox" id="optInstruments" /> 계기·밸브</label>
@@ -87,12 +91,19 @@
       </div>
       <div class="flow-wrap">
         <div id="cy"></div>
+        <div id="pidView" class="pid-view" hidden></div>
         <div class="empty" id="flowEmpty">
           <div class="empty-icon">⇄</div>
           <p><strong>PDF 입력</strong> 버튼으로 P&amp;ID를 선택하고 <strong>분석 시작</strong>을 누르세요.</p>
           <p class="muted">분석 전에 기능을 미리 보려면 <strong>샘플 데모</strong>를 누르세요.</p>
         </div>
-        <ul class="legend">
+        <ul class="legend" id="legendBasic" hidden>
+          <li><i class="lg eq"></i>설비</li>
+          <li><i class="lg lnbox"></i>Line No.</li>
+          <li><i class="lg bad"></i>검토 필요</li>
+          <li><i class="lg est"></i>AI 추정 위치</li>
+        </ul>
+        <ul class="legend" id="legendAuto">
           <li><i class="lg eq"></i>설비</li>
           <li><i class="lg ins"></i>계기</li>
           <li><i class="lg val"></i>밸브</li>
@@ -103,7 +114,7 @@
           <li id="lgFlow" hidden><i class="lg thick"></i>선 굵기 = 유량</li>
         </ul>
       </div>
-      <p class="hint">설비나 라인을 클릭하면 상세 정보가 표시됩니다.</p>
+      <p class="hint" id="flowHint">설비나 라인을 클릭하면 상세 정보가 표시됩니다.</p>
     </section>
 
     <aside class="card detail-card">

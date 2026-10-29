@@ -30,7 +30,7 @@ const css = await fs.readFile(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const page = `${head.trim()}\n${body.trim()}\n`.replace('<link rel="stylesheet" href="styles.css" />', `<style>\n${css}</style>`);
 await fs.writeFile(path.join(OUT, 'index.html'), page);
 
-for (const f of ['app.js', 'engine.js', 'chatmode.js']) await copy(`public/${f}`, f);
+for (const f of ['app.js', 'engine.js', 'chatmode.js', 'pidview.js']) await copy(`public/${f}`, f);
 for (const f of await fs.readdir(path.join(ROOT, 'shared'))) await copy(`shared/${f}`, `shared/${f}`);
 await copy('node_modules/cytoscape/dist/cytoscape.min.js', 'vendor/cytoscape.min.js');
 await copy('node_modules/cytoscape-dagre/dist/cytoscape-dagre.js', 'vendor/cytoscape-dagre.js');

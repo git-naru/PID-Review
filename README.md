@@ -4,7 +4,14 @@
 PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설비·배관·계기 정보를 추출하고, 연결성 검증을 거쳐 아래 결과를 보여줍니다.
 
 - **범례(Legend) 반영**: P&ID 세트 앞부분의 범례 시트에서 라인 번호 체계, 유체 코드, 배관 Class, 설비/계기 식별 문자, 기호를 먼저 읽고, 이를 기준으로 나머지 도면을 해석합니다. 범례 탭에서 각 코드가 실제 도면에서 몇 건 쓰였는지 확인할 수 있습니다(예: Class별 적용 라인).
-- **공정 Flow**: 설비, Off-page, Battery Limit을 배관으로 연결한 흐름도. 설비나 라인을 클릭하면 상세 정보(사양, 연결 배관, 관경/Spec, 검토 사항)를 표시합니다.
+- **공정 Flow**: 보기 방식을 고를 수 있습니다. 설비나 라인을 클릭하면 상세 정보(사양, 연결 배관, 관경/Spec, 검토 사항)를 표시합니다.
+  - **기본**(처음 보기): 원본 PDF 도면을 그대로 보여 주고, 그 위에 설비와 Line No.를 클릭할 수 있게 표시합니다.
+    - Line No.는 둥근 테두리로 감싸고, 유량은 그 아래에 표시합니다.
+    - 검토가 필요한 항목은 빨간 테두리, AI가 추정한 위치는 점선입니다.
+    - 휠로 확대·축소하고 드래그로 이동합니다. Off-page를 더블클릭하면 연결 도면으로 넘어갑니다.
+    - 도면은 한 번에 한 장씩 봅니다.
+  - **자동배치**: 설비, Off-page, Battery Limit을 배관으로 연결해 다시 그린 흐름도입니다. 여러 도면을 이어서 볼 수 있습니다.
+  - 마지막으로 고른 방식은 브라우저에 기억됩니다.
 - **설비 리스트 / 배관 리스트 / 계기·밸브**: 10건씩 표시되며, 그 이상은 스크롤해서 확인합니다. 검색할 수 있고, 더블클릭하면 원본 도면의 해당 위치로 이동합니다.
 - **검토 필요 항목**: 미연결 설비, 끝단이 연결되지 않은 라인, 라인 번호·관경·Spec 누락, 태그 중복, 입력되지 않은 도면을 가리키는 Off-page 같은 항목을 모은 목록입니다. **더블클릭하면 입력된 P&ID의 해당 부분을 확대하고 강조 표시합니다.**
 - **내보내기**: 설비/배관/계기/검토 항목/범례 CSV(Excel 호환)와 전체 결과 JSON을 내려받을 수 있습니다. 배관 CSV에는 범례의 Class 설명(재질·Rating)이 함께 들어갑니다.
@@ -153,7 +160,7 @@ npm run build:artifact   # claude.ai 아티팩트 번들 생성 (dist/artifact)
 server/   index.js(API·정적 파일) · analyzer.js(Claude API 호출) · pdfText.js(Node용 pdf.js 래퍼)
 shared/   pidText.js(텍스트/좌표) · postprocess.js(검증) · prompts.js(판독 지침) — 서버·브라우저 공용
 public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아티팩트용 브라우저 분석) · styles.css
-public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시)
+public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시) · pidview.js(Flow 기본 보기: 원본 도면 + 클릭 영역)
 scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat) · build-standalone.mjs(보기 전용 단일 HTML)
 scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs (채팅 세션 분석, Python + pypdfium2 필요)
 shared/   merge.js(시트별 결과 병합) · massbalance.js(물질수지 읽기·매칭)
