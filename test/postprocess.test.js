@@ -185,3 +185,24 @@ test('점선(짧은 대시 조각)도 끊긴 틈을 건너 모서리까지 따�
   assert.equal(traceDistance(t, [0.3, 0.503]), 0, '화살촉 안');
   assert.ok(traceDistance(t, [0.2, 0.6]) > 0.1);
 });
+
+test('NOTES 영역: 제목 아래 같은 열로 이어진 문단만 묶고 오른쪽 범례(SYMBOLS)는 넣지 않는다', async () => {
+  const { notesRegions } = await import('../shared/pdfGeom.js');
+  const t = (s, x, y, w = 0.01) => ({ s, x, y, w, h: 0.01 });
+  const items = [
+    t('NOTES:', 0.37, 0.667, 0.02),
+    t('1.', 0.368, 0.685), t('THE MASS BALANCE RESULTS ...', 0.376, 0.685, 0.45),
+    ...Array.from({ length: 11 }, (_, i) => t(`NOTE LINE ${i + 2}`, 0.376, 0.693 + i * 0.008, 0.3)),
+    t('12.', 0.368, 0.783), t('TOTAL SALTS HARVESTED CAN BE SEEN IN STREAM 1315', 0.376, 0.783, 0.4),
+    t('SYMBOLS:', 0.866, 0.674), t('MAIN FLOW', 0.906, 0.694),
+    t('1315', 0.5, 0.3), // 도면 본문의 스트림 표식
+    t('REV', 0.37, 0.95), // 표제란: 문단과 떨어져 있음
+  ];
+  const [r] = notesRegions(items);
+  const inside = (x, y) => x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
+  assert.equal(notesRegions(items).length, 1);
+  assert.ok(inside(0.7, 0.78), '문단 안의 스트림 번호');
+  assert.ok(!inside(0.906, 0.694), 'SYMBOLS 범례');
+  assert.ok(!inside(0.5, 0.3), '도면 본문');
+  assert.ok(!inside(0.37, 0.95), '표제란');
+});

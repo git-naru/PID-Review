@@ -6,7 +6,7 @@
 //      pdfjs: {OPS, Util}, selectFree({trace, ends, key})}
 // 선택한 라인(설비면 연결된 라인들)은 도면의 실제 선과 화살촉을 따라가 붉게 칠한다 (shared/pdfGeom.js)
 
-import { extractGeometry, traceLine, traceDistance, nearestSegment, traceFromSegment, mainFlowSegments } from './shared/pdfGeom.js';
+import { extractGeometry, traceLine, traceDistance, nearestSegment, traceFromSegment, mainFlowSegments, notesRegions } from './shared/pdfGeom.js';
 
 export const FREE_ID = '__free__'; // Stream 번호 없이 도면에서 직접 고른 선
 
@@ -18,6 +18,8 @@ export function createPidView(container, ui) {
   const flowSvg = container.querySelector('.pv-flow');
   const mainSvg = container.querySelector('.pv-main');
   const geoms = new Map(); // 도면별 선 데이터 (Promise)
+  const texts = new Map(); // 도면별 글자 [{s, x, y, w, h}] (Promise)
+  const notes = new Map(); // 도면별 NOTES 영역 (값 표시 안 함)
   const traces = new Map(); // 라인 id → 추적한 경로
   const stage = container.querySelector('.pv-stage');
   const canvas = container.querySelector('.pv-canvas');
@@ -214,6 +216,8 @@ export function createPidView(container, ui) {
     const html = [];
     if (r && v.key) {
       const on = (x) => x.loc?.bbox && `${x.loc.file_index}:${x.loc.page}` === v.key;
+      // NOTES 문단 안에서 찾은 스트림 번호는 특이사항 글이므로 값을 붙이지 않는다
+      const inNotes = (b) => (notes.get(v.key) || []).some((n) => (b[0] + b[2]) / 2 >= n[0] && (b[0] + b[2]) / 2 <= n[2] && (b[1] + b[3]) / 2 >= n[1] && (b[1] + b[3]) / 2 <= n[3]);
       const box = (b, pad) => `left:${pct(b[0] - pad)};top:${pct(b[1] - pad)};width:${pct(b[2] - b[0] + pad * 2)};height:${pct(b[3] - b[1] + pad * 2)}`;
       for (const n of r.nodes) {
         if (!on(n)) continue;
@@ -228,7 +232,7 @@ export function createPidView(container, ui) {
         const cls = ['pv-mark', 'line', l.kind, l.loc.source === 'model' ? 'model' : '', selected.has(l.id) ? 'sel' : ''];
         const b = l.loc.bbox;
         html.push(`<div class="${cls.join(' ')}" data-type="line" data-id="${esc(l.id)}" title="${esc(l.line_no || l.id)}" style="${box(b, 0.0025)}"></div>`);
-        const val = ui.valueText(l);
+        const val = inNotes(b) ? '' : ui.valueText(l);
         if (val) html.push(`<div class="pv-val${selected.has(l.id) ? ' sel' : ''}" data-type="line" data-id="${esc(l.id)}" style="left:${pct(b[0])};top:${pct(b[3] + 0.003)}">${esc(val)}</div>`);
       }
     }
@@ -271,18 +275,23 @@ export function createPidView(container, ui) {
 
   /** 주 흐름(Main Stream): 범례의 MAIN FLOW 견본과 같은 굵기·색의 선을 주황색으로 깔아 둔다 */
   async function drawMain(page, geom, key) {
-    let label = null;
-    try {
-      const vp = page.getViewport({ scale: 1 });
-      const it = (await page.getTextContent()).items.find((x) => /MAIN\s+FLOW/i.test(x.str) && !/SECONDARY|EVENTUAL/i.test(x.str));
-      if (it) {
-        const m = ui.pdfjs.Util.transform(vp.transform, it.transform);
-        label = { x: m[4] / vp.width, y: m[5] / vp.height, h: Math.hypot(m[2], m[3]) / vp.height };
-      }
-    } catch { /* 글자 정보 없음 */ }
+    const it = (await textOf(page, key)).find((x) => /MAIN\s+FLOW/i.test(x.s) && !/SECONDARY|EVENTUAL/i.test(x.s));
+    const label = it ? { x: it.x, y: it.y, h: it.h } : null;
     if (v.key !== key) return;
     const segs = mainFlowSegments(geom, label);
     mainSvg.innerHTML = segs.length ? `<path d="${segs.map((s) => `M${s[0]} ${s[1]}L${s[2]} ${s[3]}`).join('')}"/>` : '';
+  }
+
+  /** 도면 글자(정규 좌표). 글자 정보가 없으면 빈 목록 */
+  function textOf(page, key) {
+    if (!texts.has(key)) {
+      const vp = page.getViewport({ scale: 1 });
+      texts.set(key, page.getTextContent().then((tc) => tc.items.filter((x) => x.str?.trim()).map((x) => {
+        const m = ui.pdfjs.Util.transform(vp.transform, x.transform);
+        return { s: x.str, x: m[4] / vp.width, y: m[5] / vp.height, w: x.width / vp.width, h: Math.hypot(m[2], m[3]) / vp.height };
+      })).catch(() => []));
+    }
+    return texts.get(key);
   }
 
   /** 이 도면 라인들의 경로를 화면을 멈추지 않게 하나씩 미리 계산 (선 클릭·마우스 올림용) */
@@ -381,6 +390,7 @@ export function createPidView(container, ui) {
         readyGeom = null;
         mainSvg.innerHTML = '';
         geoms.get(key).then((geom) => { if (geom && v.key === key) { readyGeom = { key, geom }; warm(); drawMain(page, geom, key); } });
+        if (!notes.has(key)) textOf(page, key).then((items) => { notes.set(key, notesRegions(items)); if (v.key === key) buildMarks(); });
         const vp = page.getViewport({ scale: 1 });
         v.pw = vp.width;
         v.ph = vp.height;
@@ -418,7 +428,7 @@ export function createPidView(container, ui) {
       v.result = result;
       traces.clear();
       if (readyGeom) warm();
-      if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); }
+      if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); }
       return setPage(key);
     },
     setPage,
@@ -432,7 +442,7 @@ export function createPidView(container, ui) {
       v.seq++;
       v.task?.cancel();
       Object.assign(v, { result: null, key: null, page: null, rendered: '' });
-      views.clear(); geoms.clear(); traces.clear();
+      views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear();
       readyGeom = null;
       freeTrace = null;
       selected = new Set();

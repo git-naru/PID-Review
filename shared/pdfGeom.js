@@ -455,3 +455,29 @@ export function mainFlowSegments(geom, label) {
   return geom.segs.filter((s) => !s.shape && !s.dashed && Math.abs((s.w ?? 1) - w) <= Math.max(0.05 * w, 1e-6) && (s.color ?? '') === (sample.color ?? ''))
     .map((s) => [s.a[0], s.a[1], s.b[0], s.b[1]]);
 }
+
+/**
+ * 도면 NOTES 문단 영역. 특이사항을 글로 적어 둔 곳이라 스트림 번호가 나와도 값을 표시하지 않는다.
+ * items: [{s, x, y, w, h}] 0~1 정규 좌표 (y는 위에서 아래로, 글자 기준선)
+ * "NOTES:" 제목 아래로 같은 왼쪽 열에서 시작하는 줄(번호와 본문)이 끊기지 않고 이어지는 데까지를 묶는다.
+ */
+export function notesRegions(items) {
+  const out = [];
+  for (const head of items.filter((t) => /^NOTES?\s*:?$/i.test(t.s.trim()))) {
+    const col = items
+      .filter((t) => t !== head && t.y > head.y && t.x >= head.x - 0.005 && t.x <= head.x + 0.03)
+      .sort((a, b) => a.y - b.y);
+    const gap = Math.max(head.h * 3, 0.02);
+    let last = head.y;
+    let right = head.x + head.w;
+    let n = 0;
+    for (const t of col) {
+      if (t.y - last > gap) break;
+      last = t.y;
+      right = Math.max(right, t.x + t.w);
+      n++;
+    }
+    if (n) out.push([head.x - 0.005, head.y - head.h, right + 0.005, last + 0.004]);
+  }
+  return out;
+}
