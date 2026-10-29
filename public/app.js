@@ -525,9 +525,13 @@ function renderFlow() {
     if (!tgt) { tgt = `u:${l.id}:to`; els.push({ group: 'nodes', data: { id: tgt, ref: l.id, type: 'dangling', category: 'unknown', label: '?', page }, classes: 'unknown' }); }
     els.push({
       group: 'edges',
-      data: { id: `l:${l.id}`, ref: l.id, type: 'line', source: src, target: tgt, kind: l.kind, base: l.kind === 'signal' ? '' : (l.line_no || (isPfd() ? '' : '(번호 없음)')) },
+      data: { id: `l:${l.id}`, ref: l.id, type: 'line', source: src, target: tgt, kind: l.kind, label: l.kind === 'signal' ? '' : (l.line_no || (isPfd() ? '' : '(번호 없음)')) },
       classes: [l.kind, l.issue_ids.length ? 'flag' : ''].join(' '),
     });
+    // 유량 등 표시 값은 테두리 없는 별도 라벨로 라인 번호 아래에 (보이지 않는 겹친 간선)
+    if (l.kind !== 'signal') {
+      els.push({ group: 'edges', data: { id: `v:${l.id}`, ref: l.id, type: 'value', source: src, target: tgt, kind: l.kind, label: '' }, classes: `val ${l.kind}` });
+    }
   }
   // 라인에 설치된 계기·밸브는 해당 라인의 상류 설비 옆에 점선으로 연결 (배치용)
   for (const l of r.lines) {
@@ -553,7 +557,7 @@ function renderFlow() {
   cy.on('tap', 'node, edge', (e) => {
     const d = e.target.data();
     if (d.type === 'node' || d.type === 'assoc') select({ type: 'node', id: d.ref }, 'flow');
-    else if (d.type === 'line' || d.type === 'dangling') select({ type: 'line', id: d.ref }, 'flow');
+    else if (d.type === 'line' || d.type === 'value' || d.type === 'dangling') select({ type: 'line', id: d.ref }, 'flow');
   });
   cy.on('tap', (e) => { if (e.target === cy) { cy.elements().unselect(); } });
   cy.on('dbltap', 'node, edge', (e) => {
@@ -573,9 +577,12 @@ function updateFlowValues() {
   if (opt) for (const l of state.result.lines) { const v = valueOf(l, opt.key); if (v) vals.set(l.id, v); }
   const nums = opt?.flow ? [...vals.values()].map((v) => toNumber(v.value)).filter((n) => n > 0) : [];
   const lo = Math.log(Math.min(...nums)), hi = Math.log(Math.max(...nums));
-  cy.batch(() => cy.edges('[type = "line"]').forEach((e) => {
+  cy.batch(() => cy.edges('[type = "line"], [type = "value"]').forEach((e) => {
     const v = vals.get(e.data('ref'));
-    e.data('label', [e.data('base'), valueText(v, opt)].filter(Boolean).join('\n'));
+    if (e.data('type') === 'value') {
+      e.data('label', valueText(v, opt));
+      return;
+    }
     const n = v && nums.length ? toNumber(v.value) : NaN;
     if (n > 0) e.data('w', hi > lo ? 1.5 + (5 * (Math.log(n) - lo)) / (hi - lo) : 3);
     else e.removeData('w');
@@ -619,7 +626,8 @@ function applyFlowFilter() {
       if ((c === 'unknown' || c === 'battery_limit') && n.connectedEdges().filter((e) => e.style('display') !== 'none').length === 0) n.style('display', 'none');
     });
   });
-  const visible = cy.elements().filter((e) => e.style('display') !== 'none');
+  // 표시 값 간선은 라인과 같은 경로라 배치 계산에서 뺀다
+  const visible = cy.elements().filter((e) => e.style('display') !== 'none' && !e.hasClass('val'));
   visible.layout({
     name: 'dagre', rankDir: 'LR', nodeSep: 28, rankSep: 70, edgeSep: 12, animate: false,
     fit: true, padding: 30,
@@ -670,6 +678,10 @@ function flowStyle() {
     { selector: 'edge.link', style: { 'line-color': opc, 'target-arrow-color': opc, 'line-style': 'dashed', width: 2, color: opc, 'curve-style': 'bezier', 'text-border-color': opc } },
     { selector: 'edge.flag', style: { 'line-color': high, 'target-arrow-color': high, color: high, 'text-border-color': high } },
     { selector: 'edge[w]', style: { width: 'data(w)' } },
+    { selector: 'edge.val', style: {
+      'line-opacity': 0, 'target-arrow-shape': 'none', 'text-border-width': 0, 'text-background-shape': 'rectangle',
+      'text-background-opacity': 0.85, 'text-background-padding': 1, 'text-margin-y': 15, 'font-size': 8.5,
+    } },
     { selector: ':selected', style: { 'overlay-color': primary, 'overlay-opacity': 0.2, 'overlay-padding': 6 } },
     { selector: 'edge:selected', style: { width: 4 } },
   ];
