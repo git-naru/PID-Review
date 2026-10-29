@@ -301,10 +301,11 @@ function applyResult(result, sources) {
   const s = result.stats;
   $('#stats').innerHTML = [
     ['도면', result.drawings.length || result.files.length],
-    ['설비', s.equipment], ['배관', s.lines], ['계기', s.instruments], ['밸브', s.valves],
+    ['설비', s.equipment], [result.doc_type === 'pfd' ? '스트림' : '배관', s.lines], ['계기', s.instruments], ['밸브', s.valves],
   ].map(([k, v]) => `<span class="stat">${k}<b>${v}</b></span>`).join('')
     + `<span class="stat high">검토 높음<b>${s.issues.high}</b></span><span class="stat medium">중간<b>${s.issues.medium}</b></span><span class="stat">낮음<b>${s.issues.low}</b></span>`
-    + (result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
+    + (result.doc_type === 'pfd' ? '<span class="stat">PFD</span>'
+      : result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
     + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '')
     + (result.meta?.progress && result.meta.progress.done < result.meta.progress.total
       ? `<span class="stat medium">판독<b>${result.meta.progress.done}/${result.meta.progress.total}</b></span>` : '');
@@ -313,6 +314,11 @@ function applyResult(result, sources) {
   const sel = $('#drawingFilter');
   sel.innerHTML = '<option value="all">전체 도면</option>' + pagesOf(result).map((p) => `<option value="${p.key}">${esc(p.label)}</option>`).join('');
   if (sameSources && [...sel.options].some((o) => o.value === prevFilter)) sel.value = prevFilter;
+  else if (result.drawings.length > 3) {
+    // 시트가 많으면 전체를 한 화면에 그리면 알아보기 어려우므로 첫 도면부터 보여준다
+    const first = result.drawings.find((d) => d.sheet_type === 'pid');
+    if (first) sel.value = `${first.file_index}:${first.page}`;
+  }
 
   $('#cntEquipment').textContent = equipmentRows().length;
   $('#cntLines').textContent = lineRows().length;
@@ -895,6 +901,8 @@ async function openViewer(target) {
   $('#viewerTitle').textContent = target.title || '도면 보기';
   $('#viewerSub').textContent = `${drawingLabel(target.loc)} · ${state.result.files[target.loc.file_index]?.name || ''} p.${target.loc.page}${target.sub ? ` — ${target.sub}` : ''}`;
   $('#viewer').hidden = false;
+  // 복잡한 도면은 처음 그리는 데 몇 초 걸릴 수 있다
+  $('#vLoading').hidden = false;
   try {
     const doc = await getPdf(target.loc.file_index);
     viewer.page = await doc.getPage(target.loc.page);
@@ -902,10 +910,11 @@ async function openViewer(target) {
     viewer.pageW = vp1.width;
     viewer.pageH = vp1.height;
     focusViewer();
-    await renderThumb();
-    renderViewer();
+    await Promise.all([renderThumb(), renderViewer()]);
   } catch (err) {
     toast(`도면을 표시할 수 없습니다: ${err.message}`, true);
+  } finally {
+    $('#vLoading').hidden = true;
   }
 }
 

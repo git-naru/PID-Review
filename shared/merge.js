@@ -68,10 +68,25 @@ export function mergeSheets(sheets, legend, parts, failures = []) {
   const dwgOf = (s) => drawings.find((d) => d.file_index === s.file_index && d.page === s.page)?.drawing_no || `파일 ${s.file_index + 1} p.${s.page}`;
   const nodes = [], lines = [], issues = [], summaries = [];
   const seenEquipment = new Map(); // 여러 시트에 걸쳐 그려진 같은 설비는 하나로
+  // 시트마다 따로 판독하므로 id가 겹칠 수 있다(PUMP-1, OPC:...:1 등). 겹치면 도면 번호를 붙여 구분하고,
+  // 그 시트의 라인·이슈가 가리키는 id도 같이 바꾼다. (안 그러면 다른 시트의 같은 id에 잘못 연결된다)
+  const usedNodeIds = new Set(), usedLineIds = new Set();
+  const shortDwg = (sh) => { const d = dwgOf(sh); return d.match(/[A-Z]+-\d+$/i)?.[0] || d; };
+  const unique = (used, id, sh) => {
+    if (!id) return id;
+    let u = id;
+    if (used.has(u)) {
+      u = `${id}@${shortDwg(sh)}`;
+      for (let k = 2; used.has(u); k++) u = `${id}@${shortDwg(sh)}#${k}`;
+    }
+    used.add(u);
+    return u;
+  };
   for (const { sheet, out } of parts) {
     if (!out || typeof out !== 'object') continue;
     const loc = (bbox) => ({ file_index: sheet.file_index, page: sheet.page, bbox: Array.isArray(bbox) ? bbox : null });
     const alias = new Map();
+    const lineAlias = new Map();
     for (const n of arr(out.nodes)) {
       const key = n?.category === 'equipment' ? normalizeTag(n.tag) : '';
       const prev = key && seenEquipment.get(key);
@@ -82,19 +97,22 @@ export function mergeSheets(sheets, legend, parts, failures = []) {
         }
         continue;
       }
-      const node = { ...n, specs: arr(n.specs), loc: loc(n.bbox) };
+      const node = { ...n, id: unique(usedNodeIds, str(n.id), sheet), specs: arr(n.specs), loc: loc(n.bbox) };
+      if (node.id !== str(n.id)) alias.set(str(n.id), node.id);
       delete node.bbox;
       nodes.push(node);
       if (key) seenEquipment.set(key, { sheet, node });
     }
     const re = (id) => alias.get(str(id)) ?? str(id);
     for (const l of arr(out.lines)) {
-      const line = { ...l, from_id: re(l.from_id), to_id: re(l.to_id), loc: loc(l.bbox) };
+      const id = unique(usedLineIds, str(l.id), sheet);
+      if (id !== str(l.id)) lineAlias.set(str(l.id), id);
+      const line = { ...l, id, from_id: re(l.from_id), to_id: re(l.to_id), inline_items: arr(l.inline_items).map(re), loc: loc(l.bbox) };
       delete line.bbox;
       lines.push(line);
     }
     for (const x of arr(out.issues)) {
-      const iss = { ...x, related_ids: arr(x.related_ids).map(re), loc: loc(x.bbox) };
+      const iss = { ...x, related_ids: arr(x.related_ids).map((id) => lineAlias.get(str(id)) ?? re(id)), loc: loc(x.bbox) };
       delete iss.bbox;
       issues.push(iss);
     }

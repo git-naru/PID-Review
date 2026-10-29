@@ -122,16 +122,28 @@ export function postprocess(raw, files) {
     for (const end of [l.from_id, l.to_id]) if (end && degree.has(end)) degree.get(end)[l.kind]++;
   }
   const inlineTags = new Set(lines.flatMap((l) => l.inline_items.map(normalizeTag)));
+  // 라인 위에 설치된 설비(PFD의 이송 펌프 등)는 라인의 inline_items로만 연결될 수 있다
+  const isInline = (n) => [n.id, n.tag, n.name].some((k) => k && inlineTags.has(normalizeTag(k)));
 
   for (const l of lines) {
     if (l.kind !== 'signal' && (!l.from_id || !l.to_id)) {
       const missing = !l.from_id && !l.to_id ? '양 끝단' : !l.from_id ? '시작점' : '끝점';
-      ruleIssues.push({
-        severity: 'high', category: 'unconnected',
-        title: `${lineWord} ${missing} 미연결`,
-        description: `${lineWord} ${l.line_no || `(${l.id})`}의 ${missing}이(가) 어떤 설비·계기·Off-page에도 연결되어 있지 않습니다. 물량 산출 전 연결처를 확인하세요.`,
-        related_ids: [l.id],
-      });
+      if (docType === 'pfd' && l.specs.length) {
+        // PFD 물질수지표에는 증발량·누수량·합계처럼 도면에 선으로 그리지 않는 항목도 있다
+        ruleIssues.push({
+          severity: 'medium', category: 'unconnected',
+          title: `도면 연결 미표시 스트림 (${l.line_no || l.id})`,
+          description: `스트림 ${l.line_no || `(${l.id})`}은(는) 물질수지표에 값이 있지만 도면에서 ${missing} 연결처가 확인되지 않습니다. 증발·누수·합계처럼 표에만 있는 항목인지, 도면에 누락된 흐름인지 확인하세요.`,
+          related_ids: [l.id],
+        });
+      } else {
+        ruleIssues.push({
+          severity: 'high', category: 'unconnected',
+          title: `${lineWord} ${missing} 미연결`,
+          description: `${lineWord} ${l.line_no || `(${l.id})`}의 ${missing}이(가) 어떤 설비·계기·Off-page에도 연결되어 있지 않습니다. 물량 산출 전 연결처를 확인하세요.`,
+          related_ids: [l.id],
+        });
+      }
     }
     if (l.kind === 'signal' || docType === 'pfd') continue;
     if (!l.line_no) {
@@ -171,7 +183,7 @@ export function postprocess(raw, files) {
 
   for (const n of nodes) {
     const d = degree.get(n.id);
-    if (n.category === 'equipment' && d.process + d.utility === 0) {
+    if (n.category === 'equipment' && d.process + d.utility === 0 && !isInline(n)) {
       ruleIssues.push({
         severity: 'high', category: 'unconnected',
         title: `미연결 설비 (${n.tag || n.name})`,
@@ -281,6 +293,18 @@ export function postprocess(raw, files) {
   };
 }
 
+/**
+ * 번호 없는 연결끼리 짝짓기: 연결 이름과 이어진 라인의 Service 단어가 가장 많이 겹치는 후보 (동점이면 포기)
+ */
+function bestByWords(a, candidates, lines) {
+  const STOP = new Set(['TO', 'FROM', 'THE', 'AND', 'OF', 'NO', 'STREAM', 'SOLUTION', 'OP', 'PFD']);
+  const words = (n) => new Set(`${n.name} ${lines.filter((l) => l.from_id === n.id || l.to_id === n.id).map((l) => l.service).join(' ')}`
+    .toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length > 1 && !STOP.has(w) && !/^\d{3,}$/.test(w)));
+  const aw = words(a);
+  const scored = candidates.map((b) => ({ b, score: [...words(b)].filter((w) => aw.has(w)).length })).sort((x, y) => y.score - x.score);
+  return scored[0]?.score > 0 && scored[0].score > (scored[1]?.score ?? 0) ? scored[0].b : null;
+}
+
 function pairOffpages(nodes, lines, drawings, ruleIssues) {
   const offpages = nodes.filter((n) => n.category === 'offpage');
   const drawingOf = (n) => drawings.find((d) => d.file_index === n.loc.file_index && d.page === n.loc.page)
@@ -309,7 +333,8 @@ function pairOffpages(nodes, lines, drawings, ruleIssues) {
       && normalizeTag(drawingOf(b)?.drawing_no) === targetDwg
       && (!aDwg || refText(b).includes(aDwg)));
     const aLines = lineNosOf(a);
-    const best = candidates.find((b) => [...lineNosOf(b)].some((ln) => aLines.has(ln))) || (candidates.length === 1 ? candidates[0] : null);
+    const best = candidates.find((b) => [...lineNosOf(b)].some((ln) => aLines.has(ln)))
+      || (candidates.length === 1 ? candidates[0] : bestByWords(a, candidates, lines));
     if (best) {
       paired.add(a.id); paired.add(best.id);
       const aIsSource = lines.some((l) => l.to_id === a.id);

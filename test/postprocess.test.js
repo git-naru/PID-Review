@@ -129,3 +129,20 @@ test('같은 글자가 여러 곳에 있으면 모델이 짚은 위치에 가까
   assert.equal(findTagOnPages('1101', [pg], 1, [0.11, 0.8]).bbox[1], 0.80);
   assert.equal(findTagOnPages('1101', [pg], 1, [0.31, 0.1]).bbox[1], 0.10);
 });
+
+test('시트별 판독에서 겹치는 id는 시트 안의 연결을 유지한 채 구분된다', async () => {
+  const { mergeSheets } = await import('../shared/merge.js');
+  const sheet = (fi, dwg) => ({ file_index: fi, page: 1, sheet_type: 'pid', drawing_no: dwg, title: '', revision: '' });
+  const s1 = sheet(1, 'X-PFD-00001'), s2 = sheet(2, 'X-PFD-00002');
+  const out = (tank) => ({
+    nodes: [{ id: 'PUMP-1', name: 'PUMP-1', category: 'equipment', tag: '' }, { id: tank, name: tank, category: 'equipment', tag: '' }],
+    lines: [{ id: 'LINE-1', line_no: '', kind: 'process', from_id: tank, to_id: 'PUMP-1', inline_items: ['PUMP-1'] }],
+    issues: [{ title: 'x', related_ids: ['PUMP-1', 'LINE-1'] }],
+  });
+  const raw = mergeSheets([s1, s2], null, [{ sheet: s1, out: out('TANK-A') }, { sheet: s2, out: out('TANK-B') }]);
+  assert.deepEqual(raw.nodes.map((n) => n.id), ['PUMP-1', 'TANK-A', 'PUMP-1@PFD-00002', 'TANK-B']);
+  assert.equal(raw.lines[1].id, 'LINE-1@PFD-00002');
+  assert.equal(raw.lines[1].to_id, 'PUMP-1@PFD-00002');
+  assert.deepEqual(raw.issues[1].related_ids, ['PUMP-1@PFD-00002', 'LINE-1@PFD-00002']);
+  assert.deepEqual(raw.lines[1].inline_items, ['PUMP-1@PFD-00002']);
+});

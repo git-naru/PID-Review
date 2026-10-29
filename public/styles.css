@@ -259,3 +259,4 @@ button { font: inherit; }
 .runbox span { min-width: 0; flex: 1 1 320px; }
 .tier { padding: 7px 8px; border-radius: 8px; border: 1px solid var(--nav-line); background: transparent; color: var(--nav-text); font: inherit; font-weight: 600; }
 .tier option { color: var(--text); background: var(--surface); }
+.v-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; pointer-events: none; }
