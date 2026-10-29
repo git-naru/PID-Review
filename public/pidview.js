@@ -196,12 +196,13 @@ export function createPidView(container, ui) {
         if (!on(n)) continue;
         const ins = n.category === 'instrument' || n.category === 'valve';
         if (ins && !filter.instruments) continue;
-        const cls = ['pv-mark', 'node', n.category, n.issue_ids.length ? 'flag' : '', n.loc.source === 'model' ? 'model' : '', selected.has(n.id) ? 'sel' : ''];
+        // 기본 보기는 원본 도면을 그대로 보여 주므로 검토 필요 표시는 하지 않는다 (붉은색은 선택에만)
+        const cls = ['pv-mark', 'node', n.category, n.loc.source === 'model' ? 'model' : '', selected.has(n.id) ? 'sel' : ''];
         html.push(`<div class="${cls.join(' ')}" data-type="node" data-id="${esc(n.id)}" title="${esc(n.tag || n.name)}" style="${box(n.loc.bbox, 0.004)}"></div>`);
       }
       for (const l of r.lines) {
         if (l.kind === 'signal' || !on(l) || (l.kind === 'utility' && !filter.utility)) continue;
-        const cls = ['pv-mark', 'line', l.kind, l.issue_ids.length ? 'flag' : '', l.loc.source === 'model' ? 'model' : '', selected.has(l.id) ? 'sel' : ''];
+        const cls = ['pv-mark', 'line', l.kind, l.loc.source === 'model' ? 'model' : '', selected.has(l.id) ? 'sel' : ''];
         const b = l.loc.bbox;
         html.push(`<div class="${cls.join(' ')}" data-type="line" data-id="${esc(l.id)}" title="${esc(l.line_no || l.id)}" style="${box(b, 0.0025)}"></div>`);
         const val = ui.valueText(l);

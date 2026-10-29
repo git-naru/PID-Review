@@ -174,7 +174,6 @@ button { font: inherit; }
 .pv-mark.node.instrument, .pv-mark.node.valve { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .pv-mark.line { border-color: #475569; border-radius: 999px; background: color-mix(in srgb, #fff 30%, transparent); }
 .pv-mark.line.utility { border-color: #2563eb; }
-.pv-mark.flag { border-color: var(--high); }
 .pv-mark.model { border-style: dashed; }
 /* 선택한 항목만 붉은색 */
 .pv-mark.sel { border-color: var(--high); border-style: solid; border-width: calc(3px / var(--z)); background: color-mix(in srgb, var(--high) 22%, transparent);
