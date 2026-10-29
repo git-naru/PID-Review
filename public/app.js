@@ -1,9 +1,10 @@
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 import { analyzeInBrowser } from './engine.js';
 import { setupChatMode } from './chatmode.js';
+import { normalizeTag } from './shared/pidText.js';
 import {
   readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
-  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl,
+  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey,
 } from './shared/massbalance.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
@@ -123,6 +124,14 @@ function bindUpload() {
     if (f) loadMassBalance(f);
   });
   $('#mbRemove').addEventListener('click', () => setMassBalance(null, { persist: true }));
+  $('#mbLookup').addEventListener('submit', (e) => {
+    e.preventDefault();
+    lookupMassBalance($('#mbLookupInput').value);
+  });
+  $('#mbClose').addEventListener('click', closeMbTable);
+  $('#mbModal').addEventListener('click', (e) => { if (e.target.id === 'mbModal') closeMbTable(); });
+  $('#mbCsv').addEventListener('click', () => mbTableState && download(`massbalance-${mbTableState.streams.map((x) => x.id).join('_').slice(0, 60)}.csv`, '\ufeff' + mbTableCsv(mbTableState), 'text/csv;charset=utf-8'));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#mbModal').hidden) closeMbTable(); });
 
   let depth = 0;
   window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; $('#dropOverlay').hidden = false; } });
@@ -456,6 +465,7 @@ function applyResult(result, sources) {
   $('#cntInstruments').textContent = instrumentRows().length;
   $('#cntLegend').textContent = legendRows().length;
   $('.tab[data-tab="massbalance"]').hidden = !mbx;
+  $('#mbLookup').hidden = !mbx;
   $('#cntMb').textContent = mbStreams().length;
   if (!mbx && state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
   buildValueSelect();
@@ -814,11 +824,98 @@ function streamValuesTable(st) {
   return `<table class="kv wide">${props.map((p) => `<tr${p.key === key ? ' class="hl-row"' : ''}><th>${esc(p.name)}${p.unit ? ` <span class="muted">${esc(p.unit)}</span>` : ''}</th><td>${esc(formatValue(st.values[p.key]))}</td></tr>`).join('')}</table>`;
 }
 
+const fmtGpl = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 10 ? 1 : v >= 1 ? 2 : 3 });
+const hasLithium = () => mbStreams().some((st) => lithiumGpl(st, state.result.mass_balance.properties));
+function lithiumCell(st) {
+  const li = lithiumGpl(st, state.result.mass_balance.properties);
+  if (!li) return '<span class="muted">-</span>';
+  return `<span title="${li.basis === 'stream' ? '슬러리: 스트림 1 L당 용존 Li' : '액상 기준'}">${fmtGpl(li.gpl)}${li.basis === 'stream' ? '*' : ''}</span>`;
+}
+
+// ------------------------------------------------------------------ 물질수지 조회 (Line No. / 스트림 번호 → 물질수지 표)
+let mbTableState = null;
+
+/** 입력한 Line No.·스트림 번호(쉼표로 여러 개)에 해당하는 물질수지 스트림을 찾아 표로 보여 준다 */
+function lookupMassBalance(input) {
+  const mbx = state.result?.mass_balance;
+  const tokens = String(input).split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean);
+  if (!mbx || !tokens.length) return;
+  const found = [];
+  const add = (st) => { if (st && !found.includes(st)) found.push(st); };
+  const notMatched = [], missing = [];
+  for (const t of tokens) {
+    const kt = normalizeTag(t), sk = streamKey(t);
+    const before = found.length;
+    mbx.streams.filter((st) => st.key === sk).forEach(add);
+    // 도면 라인 번호: 똑같은 것 우선, 없으면 일부가 같은 것 (예: P-1001 → 6"-P-1001-A1A)
+    let lines = lineRows().filter((l) => l.line_no && normalizeTag(l.line_no) === kt);
+    if (!lines.length && kt.length >= 3) lines = lineRows().filter((l) => normalizeTag(l.line_no).includes(kt));
+    lines.forEach((l) => add(state.lineStream.get(l.id)));
+    mbx.streams.filter((st) => st.line_no && (normalizeTag(st.line_no) === kt || (kt.length >= 3 && normalizeTag(st.line_no).includes(kt)))).forEach(add);
+    if (found.length === before) (lines.length ? notMatched : missing).push(t);
+  }
+  if (notMatched.length) toast(`${notMatched.join(', ')}: 도면 라인은 있지만 물질수지와 매칭되지 않았습니다.`, true);
+  else if (missing.length) toast(`${missing.join(', ')}: 해당하는 라인이나 물질수지 스트림이 없습니다.`, true);
+  if (!found.length) return;
+  const streams = found.slice(0, 12);
+  if (found.length > 12) toast(`${found.length}개 중 12개만 표시합니다. 번호를 더 구체적으로 입력해 주세요.`);
+  select({ type: 'stream', id: streams[0].id });
+  openMbTable(streams);
+}
+
+/** 표 내용: 설명·도면 라인·Li 농도 + 물질수지 항목 (성분 묶음은 구분 행) */
+function mbTableRows(streams) {
+  const mbx = state.result.mass_balance;
+  const rows = [];
+  const text = (label, f) => { const vals = streams.map(f); if (vals.some(Boolean)) rows.push({ kind: 'text', label, unit: '', vals }); };
+  text('From', (st) => st.from);
+  text('To', (st) => st.to);
+  text('도면 라인', (st) => [...new Set(mbLinesOf(st.id).map((l) => l.line_no || l.id))].join(', ') || '도면에 없음');
+  const lis = streams.map((st) => lithiumGpl(st, mbx.properties));
+  if (lis.some(Boolean)) rows.push({ kind: 'li', label: 'Li 농도', unit: 'g/L', vals: lis.map((li) => (li ? `${fmtGpl(li.gpl)}${li.basis === 'stream' ? '*' : ''}` : '-')) });
+  let group = null;
+  for (const p of mbx.properties) {
+    const vals = streams.map((st) => st.values[p.key]);
+    if (vals.every((v) => v === undefined)) continue;
+    if (p.group !== group) {
+      group = p.group;
+      if (group) rows.push({ kind: 'sect', label: p.name.match(/\(([^)]*)\)$/)?.[1] || group });
+    }
+    rows.push({ kind: p.key === currentValueKey() ? 'cur' : 'val', label: p.group ? p.name.replace(/\s*\([^)]*\)$/, '') : p.name, unit: p.unit, vals: vals.map((v) => (v === undefined ? '-' : formatValue(v))), raw: vals });
+  }
+  return rows;
+}
+
+function openMbTable(streams) {
+  const mbx = state.result.mass_balance;
+  mbTableState = { streams, rows: mbTableRows(streams) };
+  $('#mbTitle').textContent = `물질수지 · 스트림 ${streams.map((st) => st.id).join(', ')}`;
+  const sheets = [...new Set(streams.map((st) => st.sheet).filter(Boolean))];
+  $('#mbSub').textContent = `${mbx.name}${sheets.length ? ` · ${sheets.join(', ')}` : ''}${mbTableState.rows.some((r) => r.kind === 'li' && r.vals.some((v) => v.endsWith('*'))) ? ' · * 슬러리: 스트림 1 L당 용존 Li' : ''}`;
+  $('#mbTable').innerHTML = `<thead><tr><th>항목</th><th>단위</th>${streams.map((st) => `<th>${esc(st.id)}<span class="desc">${esc(st.description)}</span></th>`).join('')}</tr></thead><tbody>${
+    mbTableState.rows.map((r) => (r.kind === 'sect'
+      ? `<tr class="sect"><td colspan="${streams.length + 2}">${esc(r.label)}</td></tr>`
+      : `<tr class="${r.kind === 'li' || r.kind === 'cur' ? r.kind : ''}"><td>${esc(r.label)}</td><td>${esc(r.unit)}</td>${r.vals.map((v) => `<td${r.kind === 'text' ? ' class="text"' : ''}>${esc(v)}</td>`).join('')}</tr>`)).join('')
+  }</tbody>`;
+  $('#mbModal').hidden = false;
+}
+
+function closeMbTable() {
+  $('#mbModal').hidden = true;
+  $('#mbLookupInput').focus();
+}
+
+function mbTableCsv({ streams, rows }) {
+  const out = [['항목', '단위', ...streams.map((st) => st.id)]];
+  for (const r of rows) out.push(r.kind === 'sect' ? [r.label] : [r.label, r.unit, ...(r.raw ? r.raw.map((v) => v ?? '') : r.vals)]);
+  return out.map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+}
+
 /** 상세 정보 맨 위: 물질수지의 Li+ 함량과 밀도로 환산한 Li 농도(g/L) */
 function lithiumBox(st) {
   const li = lithiumGpl(st, state.result.mass_balance.properties);
   if (!li) return '';
-  const fmt = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 10 ? 1 : v >= 1 ? 2 : 3 });
+  const fmt = fmtGpl;
   const how = li.basis === 'given' ? `물질수지 값 (${li.liUnit})`
     : `Li+ ${formatValue(li.liPct)} ${li.liUnit || '% w/w'} × 밀도 ${formatValue(li.density)} ${li.densityUnit}${li.basis === 'stream' ? ` × 액상 ${formatValue(100 - li.solidsPct)}%` : ''} × 10`;
   const basis = li.basis === 'liquid' ? '액상 기준'
@@ -1000,13 +1097,15 @@ const MB_DEF = {
     const lines = mbLinesOf(st.id);
     return { ...st, lines, issue_ids: [], flag: !lines.length };
   }),
-  cols: () => [['No', 44], ['Stream', 80], ['설명', 200], ['From', 110], ['To', 110], ...(currentOption() ? [[optLabel(currentOption()), 120]] : []), ['도면 매칭', 170], ['방법', 96]],
+  cols: () => [['No', 44], ['Stream', 80], ['설명', 200], ['From', 110], ['To', 110], ...(currentOption() ? [[optLabel(currentOption()), 120]] : []),
+    ...(hasLithium() ? [['Li (g/L)', 84]] : []), ['도면 매칭', 170], ['방법', 96]],
   cells: (st, i) => {
     const opt = currentOption();
     const m = state.result.mass_balance.matches.find((x) => x.stream_id === st.id);
     return [
       i + 1, `<span class="tag">${esc(st.id)}</span>`, esc(st.description), esc(st.from), esc(st.to),
       ...(opt ? [st.values[opt.key] !== undefined ? esc(formatValue(st.values[opt.key])) : '<span class="muted">-</span>'] : []),
+      ...(hasLithium() ? [lithiumCell(st)] : []),
       st.lines.length ? esc(st.lines.map((l) => l.line_no || l.id).filter((v, k, a) => a.indexOf(v) === k).join(', ')) : '<span class="warn">도면에 없음</span>',
       m ? esc(matchMethodLabel(m.method)) : '',
     ];

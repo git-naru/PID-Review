@@ -187,6 +187,21 @@ button { font: inherit; }
 .kv th { text-align: left; color: var(--muted); font-weight: 500; width: 96px; padding: 4px 6px 4px 0; vertical-align: top; }
 .kv td { padding: 4px 0; word-break: break-word; }
 .kv.wide th { width: 55%; }
+.mb-lookup input { padding: 5px 10px; border: 1px solid var(--accent); border-radius: 999px; min-width: 260px; max-width: 100%; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.mb-box { width: min(1000px, 100%); }
+.mb-table-wrap { overflow: auto; max-height: 72vh; border: 1px solid var(--border); border-radius: 8px; }
+.mb-table { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 100%; }
+.mb-table th, .mb-table td { padding: 5px 10px; border-bottom: 1px solid var(--border-soft); text-align: right; white-space: nowrap; }
+.mb-table th:first-child, .mb-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.mb-table td:nth-child(2) { text-align: left; color: var(--muted); }
+.mb-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); vertical-align: bottom; }
+.mb-table thead th:first-child { z-index: 3; background: var(--surface-2); }
+.mb-table thead .desc { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; white-space: normal; max-width: 180px; margin-left: auto; }
+.mb-table tr.sect td { background: var(--surface-2); font-weight: 600; text-align: left; color: var(--muted); font-size: 12px; }
+.mb-table tr.sect td:first-child { background: var(--surface-2); }
+.mb-table tr.li td { background: var(--accent-weak); font-weight: 700; }
+.mb-table tr.cur td { background: var(--primary-weak); }
+.mb-table td.text { text-align: left; white-space: normal; max-width: 220px; }
 .li-box { background: var(--accent-weak); border: 1px solid var(--accent); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; }
 .li-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 600; }
 .li-head b { font-size: 20px; }

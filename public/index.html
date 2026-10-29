@@ -50,6 +50,9 @@
   <section class="filebar" id="fileBar">
     <span class="muted" id="fileHint">입력된 파일 없음 — 한 장 또는 여러 장의 P&amp;ID PDF를 선택하거나 이 화면에 끌어다 놓으세요.</span>
     <ul class="chips" id="fileChips"></ul>
+    <form class="mb-lookup" id="mbLookup" hidden>
+      <input type="search" id="mbLookupInput" placeholder="Line No. 또는 스트림 번호 입력 후 Enter" aria-label="물질수지 조회: Line No. 또는 스트림 번호" title="여러 개는 쉼표로 구분해 나란히 비교할 수 있습니다" />
+    </form>
     <span class="mb-chip" id="mbChip" hidden><b>물질수지</b><span id="mbChipText"></span><button type="button" id="mbRemove" aria-label="물질수지 빼기" title="물질수지 빼기">×</button></span>
   </section>
 
@@ -174,6 +177,22 @@
         </div>
       </div>
       <p class="hint">드래그로 이동, 마우스 휠로 확대/축소, 우측 미니맵 클릭으로 위치 이동</p>
+    </div>
+  </div>
+
+  <div class="modal" id="mbModal" hidden>
+    <div class="modal-box mb-box" role="dialog" aria-modal="true" aria-labelledby="mbTitle">
+      <div class="modal-head">
+        <div>
+          <h3 id="mbTitle">물질수지</h3>
+          <p class="muted" id="mbSub"></p>
+        </div>
+        <div class="modal-tools">
+          <button class="btn small" id="mbCsv" type="button">CSV 저장</button>
+          <button class="btn small ghost" id="mbClose" type="button" title="닫기 (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="mb-table-wrap"><table class="mb-table" id="mbTable"></table></div>
     </div>
   </div>
 
