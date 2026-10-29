@@ -176,6 +176,12 @@ button { font: inherit; }
 .pv-mark:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
 .pv-val { position: absolute; font-size: calc(11px / var(--z)); line-height: 1.2; padding: 0 calc(3px / var(--z)); color: #0f3d91; background: rgba(255, 255, 255, .85);
   font-weight: 700; white-space: nowrap; cursor: pointer; font-variant-numeric: tabular-nums; }
+.pv-nav { position: absolute; transform: translateX(-50%) scale(calc(1 / var(--z))) translateY(16px); transform-origin: top center; display: flex; gap: 6px; z-index: 5; cursor: default; }
+.pv-nav .col { display: flex; flex-direction: column; gap: 3px; }
+.pv-nav button { border: 1px solid var(--primary); background: var(--surface); color: var(--primary); border-radius: 999px; padding: 2px 9px; font: inherit;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 6px var(--shadow); }
+.pv-nav button.next { background: var(--primary); color: var(--on-primary); }
+.pv-nav button:hover { filter: brightness(1.08); }
 .pv-msg { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--glass); border: 1px solid var(--border); border-radius: 8px;
   padding: 6px 12px; font-size: 12.5px; max-width: calc(100% - 24px); text-align: center; }
 .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }

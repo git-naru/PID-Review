@@ -531,6 +531,7 @@ function bindFlowToolbar() {
       return k ? nodeById(k.from_id === id ? k.to_id : k.from_id) : null;
     },
     goPage: (key) => { $('#drawingFilter').value = key; },
+    nav: flowNav,
   });
   document.querySelectorAll('#flowMode [data-mode]').forEach((b) => b.addEventListener('click', () => setFlowMode(b.dataset.mode)));
   markFlowMode();
@@ -552,6 +553,39 @@ function bindFlowToolbar() {
     cy.zoom(z);
     cy.pan({ x: 20 - bb.x1 * z, y: 20 - bb.y1 * z });
   });
+}
+
+/**
+ * 기본 보기에서 선택한 항목의 앞뒤 흐름: 라인이면 From/To 설비, 설비면 들어오고 나가는 라인.
+ * 도면에 위치가 없는 라인(번호 없는 분기)은 건너뛰고 반대편 설비로 바로 간다.
+ */
+function flowNav() {
+  const sel = state.selected;
+  if (!state.result || !sel || (sel.type !== 'node' && sel.type !== 'line')) return null;
+  const short = (s, n = 22) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+  const nodeEntry = (id) => { const n = nodeById(id); return n ? { label: short(nodeName(id)), title: `${nodeName(id)} ${n.name || ''}`, sel: { type: 'node', id } } : null; };
+  if (sel.type === 'line') {
+    const l = lineById(sel.id);
+    if (!l) return null;
+    return { anchor: l, prev: [nodeEntry(l.from_id)].filter(Boolean), next: [nodeEntry(l.to_id)].filter(Boolean) };
+  }
+  const n = nodeById(sel.id);
+  if (!n) return null;
+  const flows = lineRows();
+  const lineEntry = (l, otherId) => (l.loc?.bbox
+    ? { label: short(l.line_no || nodeName(otherId) || l.id), title: `${l.line_no || '(번호 없음)'} · ${nodeName(otherId) || '연결처 없음'}`, sel: { type: 'line', id: l.id } }
+    : nodeEntry(otherId));
+  const prev = flows.filter((l) => l.to_id === n.id).map((l) => lineEntry(l, l.from_id)).filter(Boolean);
+  const next = flows.filter((l) => l.from_id === n.id).map((l) => lineEntry(l, l.to_id)).filter(Boolean);
+  // Off-page는 연결된 도면의 짝으로
+  const k = state.result.links.find((x) => x.from_id === n.id || x.to_id === n.id);
+  if (k) {
+    const other = k.from_id === n.id ? k.to_id : k.from_id;
+    const e = { label: `연결 도면 ${short(drawingLabel(nodeById(other)?.loc), 16)}`, sel: { type: 'node', id: other } };
+    (k.from_id === n.id ? next : prev).push(e);
+  }
+  const uniq = (xs) => xs.filter((x, i) => xs.findIndex((y) => y.sel.id === x.sel.id) === i).slice(0, 6);
+  return { anchor: n, prev: uniq(prev), next: uniq(next) };
 }
 
 function setFlowMode(mode) {

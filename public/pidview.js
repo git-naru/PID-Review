@@ -2,7 +2,7 @@
 // 위치는 분석 결과의 bbox(텍스트 레이어에서 찾은 위치, 없으면 AI 추정 위치)를 쓴다. 도면은 한 번에 한 장.
 //
 // ui: {getPdf(fileIndex) → Promise<PDFDocumentProxy>, select(sel, from), open(type, id), valueText(line) → string,
-//      linkTarget(nodeId) → node | null, goPage(key)}
+//      linkTarget(nodeId) → node | null, goPage(key), nav() → {anchor, prev: [{label, sel}], next: [...]} | null}
 
 const MIN_Z = 0.5, MAX_Z = 16;
 const MAX_CANVAS_PX = 8192;
@@ -125,10 +125,14 @@ export function createPidView(container, ui) {
   // ---- 표시 항목 클릭
   marks.addEventListener('click', (e) => {
     if (moved) return;
+    // From/To 따라가기 버튼
+    const b = e.target.closest('[data-go]');
+    if (b) { ui.select(JSON.parse(b.dataset.go)); return; }
     const m = e.target.closest('[data-id]');
     if (m) ui.select({ type: m.dataset.type, id: m.dataset.id }, 'flow');
   });
   marks.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.pv-nav')) return;
     const m = e.target.closest('[data-id]');
     if (!m) return;
     // Off-page 연결은 짝이 되는 도면으로 이동
@@ -198,8 +202,27 @@ export function createPidView(container, ui) {
       }
     }
     marks.innerHTML = html.join('');
+    renderNav();
     msg.hidden = !!html.length || !v.page;
     msg.textContent = '이 도면에는 위치 정보가 있는 설비·라인이 없습니다. 자동배치 보기를 이용하세요.';
+  }
+
+  /** 선택한 항목 아래에 ◀ From / To ▶ 버튼: 눌러서 흐름을 따라간다 (다른 도면이면 그 도면으로 이동) */
+  function renderNav() {
+    marks.querySelector('.pv-nav')?.remove();
+    const nav = ui.nav?.();
+    if (!nav || (!nav.prev.length && !nav.next.length)) return;
+    const a = nav.anchor;
+    if (!a?.loc?.bbox || `${a.loc.file_index}:${a.loc.page}` !== v.key) return;
+    const b = a.loc.bbox;
+    const btn = (x, dir) => `<button type="button" class="${dir}" data-go='${esc(JSON.stringify(x.sel))}' title="${esc(x.title || x.label)}">${dir === 'prev' ? '◀ ' : ''}${esc(x.label)}${dir === 'next' ? ' ▶' : ''}</button>`;
+    const el = document.createElement('div');
+    el.className = 'pv-nav';
+    el.style.left = pct((b[0] + b[2]) / 2);
+    el.style.top = pct(b[3] + 0.006);
+    el.innerHTML = `<div class="col">${nav.prev.map((x) => btn(x, 'prev')).join('')}</div><div class="col">${nav.next.map((x) => btn(x, 'next')).join('')}</div>`;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    marks.append(el);
   }
 
   async function setPage(key) {
@@ -243,6 +266,7 @@ export function createPidView(container, ui) {
     }
     // 클릭 직후 표시 항목을 다시 만들면 더블클릭이 끊기므로 선택 표시만 바꾼다
     marks.querySelectorAll('.pv-mark').forEach((m) => m.classList.toggle('sel', selected.has(m.dataset.id)));
+    renderNav();
     if (focus && here.length) centerOn(here[0].loc.bbox);
   }
 
