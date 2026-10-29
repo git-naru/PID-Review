@@ -7,7 +7,7 @@ import { extractPdfText } from '../server/pdfText.js';
 import { postprocess } from '../shared/postprocess.js';
 import {
   readMassBalanceFile, parseMassBalance, applyMassBalance, stripMassBalance, splitLabel, streamKey,
-  valueOptions, defaultValueKey, lineValue, MassBalanceError,
+  valueOptions, defaultValueKey, lineValue, lithiumGpl, MassBalanceError,
 } from '../shared/massbalance.js';
 
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples');
@@ -133,4 +133,25 @@ test('읽을 수 없는 파일은 이유를 알려 준다', async () => {
   await assert.rejects(readMassBalanceFile('old.xls', new ArrayBuffer(8)), MassBalanceError);
   await assert.rejects(readMassBalanceFile('drm.xlsx', new TextEncoder().encode('not a zip').buffer), /암호나 문서 보안/);
   await assert.rejects(readMassBalanceFile('x.csv', new TextEncoder().encode('a,b\n1,2\n').buffer), /스트림 번호 행/);
+});
+
+test('Li 농도(g/L): 액상은 Li+ × 밀도, 슬러리는 액상 분율 반영, 고상 Li2CO3는 총 Li에 포함', () => {
+  const mb = parseMassBalance(grid([
+    ['Stream', '', '1101', '1530', '1600'],
+    ['Density', 't/m3', '1.208', '0.98', '1050'],
+    ['% Solids', '%', '0', '63.2', '0'],
+    ['LIQUID CHEMICAL COMPOSITION', '', '', '', ''],
+    ['Li+', '% w/w', '0.0641', '0.162', '0.5'],
+    ['SOLID CHEMICAL COMPOSITION', '', '', '', ''],
+    ['Li2CO3', '% w/w', '0', '98.46', '0'],
+  ]));
+  const [brine, cake] = mb.streams.map((s) => lithiumGpl(s, mb.properties));
+  assert.equal(brine.basis, 'liquid');
+  assert.ok(Math.abs(brine.gpl - 0.0641 * 1.208 * 10) < 1e-9);
+  assert.equal(cake.basis, 'stream');
+  assert.ok(Math.abs(cake.gpl - 0.162 * 0.368 * 0.98 * 10) < 1e-9);
+  assert.ok(Math.abs(cake.totalGpl - (0.162 * 0.368 + 98.46 * 0.18785 * 0.632) * 0.98 * 10) < 1e-6);
+  // 밀도 단위가 kg/m3이면 1000으로 나눈다
+  const kgm3 = parseMassBalance(grid([['Stream', '', '1', '2'], ['Density', 'kg/m3', '1050', '1000'], ['Li+', '% w/w', '0.5', '0']]));
+  assert.ok(Math.abs(lithiumGpl(kgm3.streams[0], kgm3.properties).gpl - 5.25) < 1e-9);
 });

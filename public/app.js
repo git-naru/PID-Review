@@ -3,7 +3,7 @@ import { analyzeInBrowser } from './engine.js';
 import { setupChatMode } from './chatmode.js';
 import {
   readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
-  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel,
+  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl,
 } from './shared/massbalance.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
@@ -782,7 +782,8 @@ function lineDetail(l) {
   if (!l) return '<p class="muted">항목을 찾을 수 없습니다.</p>';
   const missing = (v) => (v ? esc(v) : '<span style="color:var(--high)">미표기</span>');
   const pfd = isPfd();
-  return `
+  const st = state.result.mass_balance ? state.lineStream.get(l.id) : null;
+  return `${st ? lithiumBox(st) : ''}
     <span class="badge line">${KIND_LABEL[l.kind]} ${pfd ? '스트림' : '배관'}</span>
     <h3>${esc(l.line_no ? (pfd ? `스트림 ${l.line_no}` : l.line_no) : pfd ? '(번호 없는 연결)' : '(라인 번호 없음)')}</h3>
     <p class="sub">${esc(l.service)}</p>
@@ -813,6 +814,22 @@ function streamValuesTable(st) {
   return `<table class="kv wide">${props.map((p) => `<tr${p.key === key ? ' class="hl-row"' : ''}><th>${esc(p.name)}${p.unit ? ` <span class="muted">${esc(p.unit)}</span>` : ''}</th><td>${esc(formatValue(st.values[p.key]))}</td></tr>`).join('')}</table>`;
 }
 
+/** 상세 정보 맨 위: 물질수지의 Li+ 함량과 밀도로 환산한 Li 농도(g/L) */
+function lithiumBox(st) {
+  const li = lithiumGpl(st, state.result.mass_balance.properties);
+  if (!li) return '';
+  const fmt = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 10 ? 1 : v >= 1 ? 2 : 3 });
+  const how = li.basis === 'given' ? `물질수지 값 (${li.liUnit})`
+    : `Li+ ${formatValue(li.liPct)} ${li.liUnit || '% w/w'} × 밀도 ${formatValue(li.density)} ${li.densityUnit}${li.basis === 'stream' ? ` × 액상 ${formatValue(100 - li.solidsPct)}%` : ''} × 10`;
+  const basis = li.basis === 'liquid' ? '액상 기준'
+    : li.basis === 'stream' ? `고형분 ${formatValue(li.solidsPct)}% 슬러리라 스트림 1 L당 용존 Li로 계산` : '';
+  return `<div class="li-box">
+    <div class="li-head"><span>Li 농도 <span class="muted">(스트림 ${esc(st.id)})</span></span><b>${fmt(li.gpl)} g/L</b></div>
+    <div class="li-sub">${esc(how)}${basis ? `<br>${esc(basis)}` : ''}</div>
+    ${li.totalGpl != null ? `<div class="li-sub">고상 리튬 화합물 포함 총 Li <b>${fmt(li.totalGpl)} g/L</b></div>` : ''}
+  </div>`;
+}
+
 function massBalanceBlock(l) {
   const mbx = state.result.mass_balance;
   if (!mbx || l.kind === 'signal') return '';
@@ -828,7 +845,7 @@ function streamDetail(st) {
   const mbx = state.result.mass_balance;
   const lines = mbLinesOf(st.id);
   const method = (id) => matchMethodLabel(mbx.matches.find((x) => x.line_id === id && x.stream_id === st.id)?.method);
-  return `
+  return `${lithiumBox(st)}
     <span class="badge line">물질수지 스트림</span>
     <h3>스트림 ${esc(st.id)}</h3>
     <p class="sub">${esc(st.description)}</p>

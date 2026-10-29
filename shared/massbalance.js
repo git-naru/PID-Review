@@ -524,3 +524,48 @@ export function lineValue(line, key, streamOf) {
   const sp = (line.specs || []).find((x) => specKey(x.name) === key);
   return sp ? { value: sp.value, source: 'drawing' } : null;
 }
+
+// ------------------------------------------------------------------ Li 농도 (g/L)
+// 고상 리튬 화합물의 Li 질량 분율 (Li 6.941)
+const LI_SOLIDS = { li2co3: 0.18785, licl: 0.16373, li2so4: 0.12626, lioh: 0.28982, liohh2o: 0.16541 };
+
+/**
+ * 물질수지 스트림의 Li 농도를 g/L로 환산한다.
+ * - 액상 Li+ (% w/w) × 밀도(t/m3 = kg/L) × 10. 고형분이 없으면 밀도가 곧 액상 밀도이므로 액상 기준 농도다.
+ * - 고형분이 있으면 액상 밀도를 알 수 없어 스트림(슬러리) 1 L당 용존 Li로 계산한다 (Li+ × 액상 분율 × 밀도).
+ * - 고상에 Li2CO3 등 리튬 화합물이 있으면 고상 포함 총 Li도 함께 낸다.
+ * @returns {null | {gpl, basis: 'liquid'|'stream'|'given', liPct, liUnit, density, densityUnit, solidsPct, totalGpl}}
+ */
+export function lithiumGpl(stream, properties) {
+  const num = (p) => (p ? toNumber(stream.values[p.key]) : NaN);
+  const nameOf = (p) => p.key.split('|')[0];
+  const unitOf = (p) => p.key.split('|')[1];
+  const has = (p) => stream.values[p.key] !== undefined && Number.isFinite(num(p));
+  const li = properties.find((p) => /^(li\+?1?|lithium|li\(aq\))$/.test(nameOf(p)) && !/solid/i.test(p.group) && has(p));
+  if (!li) return null;
+  const liUnit = unitOf(li);
+  const liVal = num(li);
+  if (/^(g\/l|kg\/m3)$/.test(liUnit)) return { gpl: liVal, basis: 'given', liPct: null, liUnit: li.unit };
+  if (/^mg\/l$/.test(liUnit)) return { gpl: liVal / 1000, basis: 'given', liPct: null, liUnit: li.unit };
+  const liPct = /^(ppm\w*|mg\/kg)$/.test(liUnit) ? liVal / 1e4 : /%|wt/.test(liUnit) || !liUnit ? liVal : NaN;
+  const dens = properties.find((p) => nameOf(p) === 'density' && has(p));
+  if (!Number.isFinite(liPct) || !dens) return null;
+  const du = unitOf(dens);
+  const kgPerL = /^kg\/m3$/.test(du) ? num(dens) / 1000 : /^(t\/m3|g\/cm3|kg\/l|g\/ml|sg|)$/.test(du) ? num(dens) : NaN;
+  if (!Number.isFinite(kgPerL) || kgPerL <= 0) return null;
+  const solidsP = properties.find((p) => nameOf(p) === '%solids' && has(p));
+  const solidsPct = solidsP ? num(solidsP) : 0;
+  const liquidFrac = Math.max(0, 1 - solidsPct / 100);
+  const gpl = liPct * (solidsPct > 0 ? liquidFrac : 1) * kgPerL * 10;
+  // 고상 리튬 화합물 (% w/w of solids)
+  let solidLiPct = 0;
+  for (const p of properties) {
+    const f = LI_SOLIDS[nameOf(p).replace(/\(s\)$|s$/, '')] ?? LI_SOLIDS[nameOf(p)];
+    if (f && /solid/i.test(p.group) && has(p)) solidLiPct += num(p) * f;
+  }
+  const totalGpl = solidsPct > 0 && solidLiPct > 0 ? (liPct * liquidFrac + solidLiPct * (solidsPct / 100)) * kgPerL * 10 : null;
+  return {
+    gpl, basis: solidsPct > 0 ? 'stream' : 'liquid', liPct, liUnit: li.unit,
+    density: num(dens), densityUnit: dens.unit, solidsPct, totalGpl,
+  };
+}
