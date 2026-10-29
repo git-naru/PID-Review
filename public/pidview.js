@@ -3,10 +3,12 @@
 //
 // ui: {getPdf(fileIndex) → Promise<PDFDocumentProxy>, select(sel, from), open(type, id), valueText(line) → string,
 //      linkTarget(nodeId) → node | null, goPage(key), nav() → {anchor, prev: [{label, sel}], next: [...]} | null,
-//      pdfjs: {OPS, Util}}
+//      pdfjs: {OPS, Util}, selectFree({trace, ends, key})}
 // 선택한 라인(설비면 연결된 라인들)은 도면의 실제 선과 화살촉을 따라가 붉게 칠한다 (shared/pdfGeom.js)
 
-import { extractGeometry, traceLine, traceDistance } from './shared/pdfGeom.js';
+import { extractGeometry, traceLine, traceDistance, nearestSegment, traceFromSegment } from './shared/pdfGeom.js';
+
+export const FREE_ID = '__free__'; // Stream 번호 없이 도면에서 직접 고른 선
 
 const MIN_Z = 0.5, MAX_Z = 16;
 const MAX_CANVAS_PX = 8192;
@@ -25,7 +27,7 @@ export function createPidView(container, ui) {
   // 도면별로 마지막 확대·이동 상태를 기억 (보기 방식을 바꿨다 돌아와도 그대로)
   const views = new Map();
   const remember = () => { if (v.key && v.page) views.set(v.key, { z: v.z, tx: v.tx, ty: v.ty, cw: container.clientWidth, ch: container.clientHeight }); };
-  const filter = { instruments: false, utility: true };
+  const filter = { instruments: false, utility: false };
   let selected = new Set();
 
   // ---- 화면 이동·확대
@@ -137,9 +139,17 @@ export function createPidView(container, ui) {
     if (b) { ui.select(JSON.parse(b.dataset.go)); return; }
     const m = e.target.closest('[data-id]');
     if (m) { ui.select({ type: m.dataset.type, id: m.dataset.id }, 'flow'); return; }
-    // 도면의 선이나 화살표를 직접 눌러도 그 라인을 고른다
+    // 도면의 선이나 화살표를 직접 눌러도 그 라인을 고른다 (Stream 번호가 없는 선도)
     const hit = hitLine(e);
-    if (hit) ui.select({ type: 'line', id: hit }, 'flow');
+    if (hit) { ui.select({ type: 'line', id: hit }, 'flow'); return; }
+    const free = hitFree(e);
+    if (free) {
+      // 그 경로 위에 Line No.가 있으면 그 라인으로
+      const own = pageLines().find((l) => traceDistance(free, [(l.loc.bbox[0] + l.loc.bbox[2]) / 2, (l.loc.bbox[1] + l.loc.bbox[3]) / 2]) < Math.max(l.loc.bbox[2] - l.loc.bbox[0], l.loc.bbox[3] - l.loc.bbox[1]) * 1.2);
+      if (own) { ui.select({ type: 'line', id: own.id }, 'flow'); return; }
+      freeTrace = free;
+      ui.selectFree({ trace: free, ends: traceEnds(free), key: v.key });
+    }
   });
   // 선 위에 마우스를 올리면 손가락 모양
   let hoverRaf = 0;
@@ -147,7 +157,7 @@ export function createPidView(container, ui) {
     if (drag || hoverRaf) return;
     hoverRaf = requestAnimationFrame(() => {
       hoverRaf = 0;
-      marks.style.cursor = !e.target.closest('[data-id], .pv-nav') && hitLine(e) ? 'pointer' : '';
+      marks.style.cursor = !e.target.closest('[data-id], .pv-nav') && (hitLine(e) || nearSeg(e) >= 0) ? 'pointer' : '';
     });
   });
   marks.addEventListener('dblclick', (e) => {
@@ -270,11 +280,32 @@ export function createPidView(container, ui) {
     setTimeout(step, 50);
   }
 
+  const pagePoint = (e) => {
+    const r = container.getBoundingClientRect();
+    return [(e.clientX - r.left - v.tx) / (v.W * v.z), (e.clientY - r.top - v.ty) / (v.H * v.z)];
+  };
+  const nearSeg = (e) => (readyGeom && readyGeom.key === v.key ? nearestSegment(readyGeom.geom, pagePoint(e), 6 / (v.W * v.z)) : -1);
+  let freeTrace = null;
+
+  /** Line No. 없는 선: 누른 선분에서 시작해 이어진 경로 (다른 Line No. 표식에서 멈춤) */
+  function hitFree(e) {
+    const seg = nearSeg(e);
+    if (seg < 0) return null;
+    return traceFromSegment(readyGeom.geom, seg, { stops: pageLines().filter((l) => l.line_no).map((l) => l.loc.bbox) });
+  }
+
+  /** 경로의 양 끝 (다른 선분과 이어지지 않은 끝점), 화살 머리가 닿은 끝은 arrow: true */
+  function traceEnds(t) {
+    const pts = t.segs.flatMap((s) => [[s[0], s[1]], [s[2], s[3]]]);
+    const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.0015;
+    return pts.filter((p) => pts.filter((q) => near(p, q)).length === 1)
+      .map((p) => ({ p, arrow: t.arrows.some((a) => traceDistance({ segs: [], arrows: [a] }, p) < 0.002) }));
+  }
+
   /** 화면 위치 → 가장 가까운 라인 경로 (화면에서 6px 이내) */
   function hitLine(e) {
     if (!readyGeom || readyGeom.key !== v.key || !v.page) return null;
-    const r = container.getBoundingClientRect();
-    const p = [(e.clientX - r.left - v.tx) / (v.W * v.z), (e.clientY - r.top - v.ty) / (v.H * v.z)];
+    const p = pagePoint(e);
     const tol = 6 / (v.W * v.z);
     let best = null, bestD = tol;
     for (const l of pageLines()) {
@@ -296,12 +327,12 @@ export function createPidView(container, ui) {
       if (l.kind === 'signal' || !on(l)) continue;
       if (selected.has(l.id) || selected.has(l.from_id) || selected.has(l.to_id)) lines.set(l.id, l);
     }
-    if (!lines.size) return;
+    const free = selected.has(FREE_ID) && freeTrace ? [freeTrace] : [];
+    if (!lines.size && !free.length) return;
     const geom = await geoms.get(key);
     if (!geom || key !== v.key) return;
     const parts = [];
-    for (const l of [...lines.values()].slice(0, 12)) {
-      const t = traceOf(l, geom);
+    for (const t of [...[...lines.values()].slice(0, 12).map((l) => traceOf(l, geom)), ...free]) {
       if (!t) continue;
       // 점선 스타일로 그려진 선은 점선으로 (짧은 대시 조각들로 된 점선은 조각만 칠해 저절로 점선)
       const solid = t.segs.filter((s) => !s[4]), dash = t.segs.filter((s) => s[4]);
@@ -319,6 +350,7 @@ export function createPidView(container, ui) {
       const [fi, p] = key.split(':').map(Number);
       v.key = key;
       v.rendered = '';
+      freeTrace = null;
       v.page = null;
       marks.innerHTML = '';
       msg.hidden = false;

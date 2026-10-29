@@ -222,11 +222,44 @@ function segGrid(geom) {
 
 const MAX_FLOOD = 500;
 
-/** 이어진 배관선 전체 (끝점 공유, T자, 점선·표식 틈). 다른 Line No. 표식이나 설비 기호에서 멈춘다 */
+/** 화살촉(작은 채운 삼각형) 목록과 격자 */
+function arrowIndex(geom) {
+  if (geom.tris) return geom.tris;
+  const cell = 0.01, map = new Map(), list = [];
+  for (const poly of geom.fills) {
+    const pts = poly.filter((p, k) => poly.findIndex((q) => dist2(p, q) < 1e-10) === k);
+    if (pts.length !== 3) continue;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    if (Math.max(...xs) - Math.min(...xs) > 0.012 || Math.max(...ys) - Math.min(...ys) > 0.012) continue;
+    const k = `${Math.floor((xs[0] + xs[1] + xs[2]) / 3 / cell)},${Math.floor((ys[0] + ys[1] + ys[2]) / 3 / cell)}`;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(list.length);
+    list.push(pts);
+  }
+  geom.tris = { cell, map, list };
+  return geom.tris;
+}
+
+/** 이 점에 화살촉이 있는지 (선 끝이 화살 머리에 닿음) */
+function arrowAt(geom, p) {
+  const { cell, map, list } = arrowIndex(geom);
+  const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell);
+  for (let x = cx - 1; x <= cx + 1; x++) for (let y = cy - 1; y <= cy + 1; y++) {
+    for (const t of map.get(`${x},${y}`) || []) if (traceDistance({ segs: [], arrows: [list[t]] }, p) < 0.0015) return true;
+  }
+  return false;
+}
+
+/**
+ * 이어진 배관선 전체 = 하나의 스트림.
+ * - 스트림은 최소한 화살 머리까지 이어지고, 화살 머리에서 다시 이어지는 선이 있으면 같은 스트림으로 계속 간다
+ * - 교차(양쪽으로 지나가는 선)는 끊지 않고 직진, 다른 선에 T자로 합류·분기하면 그 선으로 이어 간다
+ * - 다른 스트림의 Line No. 표식, 설비 기호, 색·선 모양이 다른 선에서 멈춘다
+ *   (굵기만 다른 가지는 끝에 화살 머리가 있으면 배관으로 보고 이어 간다)
+ */
 function flood(geom, seed, { eps, inLabel, bw, bh, stops }) {
   const { segs } = geom;
   const grid = segGrid(geom);
-  // 시작 선과 같은 굵기·색·선 모양(실선/대시 길이)인 선만 같은 배관으로 본다 (설비 외곽선·구역 경계선 제외)
   const s0 = segs[seed];
   const dashLen = segLen(s0) < 0.012 ? segLen(s0) : 0;
   const sameKind = (t) => Math.abs((t.w ?? 1) - (s0.w ?? 1)) <= Math.max(0.05 * (s0.w ?? 1), 1e-6) && (t.color ?? '') === (s0.color ?? '')
@@ -236,19 +269,59 @@ function flood(geom, seed, { eps, inLabel, bw, bh, stops }) {
     return [s.a, s.b, [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2]].some((p) => p[0] >= b[0] - pad && p[0] <= b[2] + pad && p[1] >= b[1] - pad && p[1] <= b[3] + pad);
   });
   const ortho = (s) => { const d = dir(s.a, s.b); return Math.abs(d[0]) > 0.995 || Math.abs(d[1]) > 0.995; };
+  const away = (t, p) => (dist2(t.a, p) < dist2(t.b, p) ? dir(t.a, t.b) : dir(t.b, t.a)); // p에서 멀어지는 방향
+  const cross = (u, w) => u[0] * w[1] - u[1] * w[0];
   const used = new Set([seed]);
   const queue = [seed];
-  const add = (i) => { if (!used.has(i) && !blocked(segs[i])) { used.add(i); queue.push(i); } };
+  // 굵기만 다른 가지(예: 굵은 주 배관에서 갈라지는 가는 배관)는 끝에 화살 머리가 있으면 같은 흐름으로 본다
+  const looseBlocked = (t) => t.shape || (t.color ?? '') !== (s0.color ?? '') || !ortho(t) || (dashLen && !(segLen(t) > dashLen * 0.5 && segLen(t) < dashLen * 2)) || blocked({ ...t, w: s0.w, color: s0.color });
+  const tried = new Set();
+  const tryBranch = (j) => {
+    if (tried.has(j)) return;
+    tried.add(j);
+    const w = segs[j].w ?? 1;
+    const set = new Set([j]), q = [j];
+    let arrow = false;
+    while (q.length && set.size <= 150) {
+      const k = q.shift();
+      const t = segs[k];
+      for (const p of [t.a, t.b]) {
+        const nb = geom.index.near(p, eps).map((e) => e.i).filter((m) => m !== k);
+        const same = nb.filter((m) => !used.has(m) && Math.abs((segs[m].w ?? 1) - w) <= Math.max(0.05 * w, 1e-6) && !looseBlocked(segs[m]));
+        same.forEach((m) => { if (!set.has(m)) { set.add(m); q.push(m); } });
+        if (!nb.length && arrowAt(geom, p)) arrow = true;
+      }
+    }
+    if (!arrow || set.size > 150) return;
+    for (const m of set) { tried.add(m); if (!used.has(m)) { used.add(m); queue.push(m); } }
+  };
+  const add = (i) => {
+    if (used.has(i)) return false;
+    if (!blocked(segs[i])) { used.add(i); queue.push(i); return true; }
+    if (!looseBlocked(segs[i])) tryBranch(i);
+    return false;
+  };
+  const cellsOf = (s) => {
+    const out = [];
+    const x0 = Math.floor(Math.min(s.a[0], s.b[0]) / grid.cell), x1 = Math.floor(Math.max(s.a[0], s.b[0]) / grid.cell);
+    const y0 = Math.floor(Math.min(s.a[1], s.b[1]) / grid.cell), y1 = Math.floor(Math.max(s.a[1], s.b[1]) / grid.cell);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push(...(grid.map.get(`${x},${y}`) || []));
+    return [...new Set(out)];
+  };
   while (queue.length) {
     if (used.size > MAX_FLOOD) return null;
     const i = queue.shift();
     const s = segs[i];
     for (const [p, q] of [[s.b, s.a], [s.a, s.b]]) {
-      const shared = geom.index.near(p, eps).filter((e) => e.i !== i);
-      shared.forEach((e) => add(e.i));
-      // T자: 이 끝점이 다른 배관선의 중간에 닿음
-      const cx = Math.floor(p[0] / grid.cell), cy = Math.floor(p[1] / grid.cell);
+      const d = dir(q, p); // 이 끝에서 바깥쪽 방향
+      const shared = geom.index.near(p, eps).filter((e) => e.i !== i).map((e) => e.i);
+      const straight = shared.filter((j) => { const w = away(segs[j], p); return w[0] * d[0] + w[1] * d[1] > 0.97; });
+      const left = shared.filter((j) => cross(d, away(segs[j], p)) > 0.5), right = shared.filter((j) => cross(d, away(segs[j], p)) < -0.5);
+      if (straight.length && left.length && right.length) straight.forEach(add); // 교차: 직진만
+      else shared.forEach(add);
+      // T자 합류: 이 끝점이 다른 배관선의 중간에 닿음 → 그 선으로 이어 간다
       let touched = false;
+      const cx = Math.floor(p[0] / grid.cell), cy = Math.floor(p[1] / grid.cell);
       for (const j of grid.map.get(`${cx},${cy}`) || []) {
         if (j === i) continue;
         const t = segs[j];
@@ -256,32 +329,44 @@ function flood(geom, seed, { eps, inLabel, bw, bh, stops }) {
         if (pointSegDist(p, t.a, t.b) < eps && dist2(p, t.a) > eps * eps && dist2(p, t.b) > eps * eps) { touched = true; add(j); }
       }
       if (shared.length || touched) continue;
-      // 끝난 곳: 점선 틈·라인 표식·교차 회피 틈을 같은 방향으로 건너기
-      const d = dir(q, p);
-      const gap = inLabel(p) ? Math.max(bw, bh) * 1.4 : 0.006;
+      // 끝난 곳: 점선 틈·라인 표식·교차 회피 틈을 같은 방향으로 건너기 (다른 선이 가로지르는 틈은 더 멀리까지)
+      const gap = inLabel(p) ? Math.max(bw, bh) * 1.4 : 0.015;
       geom.index.near(p, gap).forEach((e) => {
         if (e.i === i) return;
         const t = segs[e.i];
         const from = e.end ? t.b : t.a, to = e.end ? t.a : t.b;
         const dd = dir(from, to), toward = dir(p, from);
-        if (dd[0] * d[0] + dd[1] * d[1] > 0.97 && toward[0] * d[0] + toward[1] * d[1] > 0.97) add(e.i);
+        if (dd[0] * d[0] + dd[1] * d[1] <= 0.97 || toward[0] * d[0] + toward[1] * d[1] <= 0.97) return;
+        if (pointSegDist(from, p, [p[0] + d[0], p[1] + d[1]]) > eps) return; // 같은 직선 위
+        const far = Math.sqrt(dist2(p, from));
+        if (far > 0.006 && !inLabel(p)) {
+          // 먼 틈은 그 사이를 다른 선이 가로지를 때만 (교차 회피로 끊어 그린 곳)
+          const mid = [(p[0] + from[0]) / 2, (p[1] + from[1]) / 2];
+          const crossing = cellsOf({ a: p, b: from }).some((j) => j !== i && j !== e.i && !segs[j].shape && pointSegDist(mid, segs[j].a, segs[j].b) < far / 2 + eps);
+          if (!crossing) return;
+        }
+        add(e.i);
       });
       // 점선이 꺾이는 모서리
       if (segLen(s) <= 0.012) geom.index.near(p, Math.max(segLen(s), 0.003)).forEach((e) => { if (e.i !== i && ortho(segs[e.i])) add(e.i); });
     }
-    // 이 선분의 중간에 닿는 가지(T자로 들어오는 선)
+    // 이 선분의 중간에 닿는 가지: 한쪽에서만 닿으면 가지(화살촉으로 들어오는 다른 흐름은 제외), 양쪽이면 교차라 건너지 않음
     if (ortho(s) && segLen(s) >= 0.004) {
-      const x0 = Math.floor(Math.min(s.a[0], s.b[0]) / grid.cell), x1 = Math.floor(Math.max(s.a[0], s.b[0]) / grid.cell);
-      const y0 = Math.floor(Math.min(s.a[1], s.b[1]) / grid.cell), y1 = Math.floor(Math.max(s.a[1], s.b[1]) / grid.cell);
-      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
-        for (const j of grid.map.get(`${x},${y}`) || []) {
-          if (j === i || used.has(j)) continue;
-          const t = segs[j];
-          if (t.shape || !ortho(t) || segLen(t) < 0.004) continue;
-          for (const p of [t.a, t.b]) {
-            if (pointSegDist(p, s.a, s.b) < eps && dist2(p, s.a) > eps * eps && dist2(p, s.b) > eps * eps) { add(j); break; }
-          }
+      const touches = [];
+      for (const j of cellsOf(s)) {
+        if (j === i || used.has(j)) continue;
+        const t = segs[j];
+        if (t.shape || !ortho(t) || segLen(t) < 0.004) continue;
+        for (const p of [t.a, t.b]) {
+          if (pointSegDist(p, s.a, s.b) < eps && dist2(p, s.a) > eps * eps && dist2(p, s.b) > eps * eps) { touches.push({ j, p }); break; }
         }
+      }
+      const ds = dir(s.a, s.b);
+      for (const { j, p } of touches) {
+        const side = Math.sign(cross(ds, away(segs[j], p)));
+        const opposite = touches.some((o) => o.j !== j && dist2(o.p, p) < eps * eps * 4 && Math.sign(cross(ds, away(segs[o.j], o.p))) === -side);
+        if (opposite) continue;
+        add(j);
       }
     }
   }
@@ -297,7 +382,7 @@ function finish(geom, path, bbox) {
     let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
     for (const p of pts) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
     if (x1 - x0 > 0.012 || y1 - y0 > 0.012) return false;
-    if (x1 >= bbox[0] && x0 <= bbox[2] && y1 >= bbox[1] && y0 <= bbox[3]) return false;
+    if (bbox && x1 >= bbox[0] && x0 <= bbox[2] && y1 >= bbox[1] && y0 <= bbox[3]) return false;
     const m = [(pts[0][0] + pts[1][0] + pts[2][0]) / 3, (pts[0][1] + pts[1][1] + pts[2][1]) / 3];
     if (path.some((s) => pointSegDist(m, s.a, s.b) < 0.0015)) return true;
     // 선 끝이 화살촉에 닿아 있음 (끝점이 삼각형 안이거나 변에 가까움)
@@ -305,6 +390,37 @@ function finish(geom, path, bbox) {
     return path.some((s) => traceDistance(tri, s.a) < 0.0015 || traceDistance(tri, s.b) < 0.0015);
   });
   return { segs: path.map((s) => [s.a[0], s.a[1], s.b[0], s.b[1], s.dashed ? 1 : 0]), arrows };
+}
+
+/** 점 p 가까이(tol 이내) 있는 배관선 선분 (기호 도형·도면 테두리 제외). 없으면 -1 */
+export function nearestSegment(geom, p, tol) {
+  if (!geom?.segs.length) return -1;
+  const grid = segGrid(geom);
+  const r = Math.ceil(tol / grid.cell);
+  const cx = Math.floor(p[0] / grid.cell), cy = Math.floor(p[1] / grid.cell);
+  let best = -1, bestD = tol;
+  for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++) {
+    for (const j of grid.map.get(`${x},${y}`) || []) {
+      const t = geom.segs[j];
+      if (t.shape) continue;
+      const d = pointSegDist(p, t.a, t.b);
+      if (d < bestD) { bestD = d; best = j; }
+    }
+  }
+  return best;
+}
+
+/** Line No. 없이 선분 하나에서 시작해 이어진 경로 (도면에서 선을 직접 고를 때) */
+export function traceFromSegment(geom, seed, opts = {}) {
+  const eps = opts.eps ?? 0.0012;
+  geom.index ||= buildIndex(geom.segs, 0.004);
+  const ctx = { eps, inLabel: () => false, bw: 0, bh: 0 };
+  let used = flood(geom, seed, { ...ctx, stops: opts.stops || [] });
+  if (!used) {
+    used = new Set([seed]);
+    linearWalk(geom, used, seed, ctx);
+  }
+  return finish(geom, [...used].map((i) => geom.segs[i]), null);
 }
 
 /** 점 p(정규화 좌표)에서 추적한 경로(선·화살촉)까지의 거리 */

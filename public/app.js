@@ -2,7 +2,7 @@ import * as pdfjsLib from './vendor/pdf.min.mjs';
 import { analyzeInBrowser } from './engine.js';
 import { setupChatMode } from './chatmode.js';
 import { normalizeTag } from './shared/pidText.js';
-import { createPidView } from './pidview.js';
+import { createPidView, FREE_ID } from './pidview.js';
 import {
   readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
   valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey, formatGpl, LI_KEY,
@@ -533,6 +533,7 @@ function bindFlowToolbar() {
     goPage: (key) => { $('#drawingFilter').value = key; },
     nav: () => ($('#optNav').checked ? flowNav() : null),
     pdfjs: pdfjsLib,
+    selectFree,
   });
   document.querySelectorAll('#flowMode [data-mode]').forEach((b) => b.addEventListener('click', () => setFlowMode(b.dataset.mode)));
   markFlowMode();
@@ -847,7 +848,57 @@ function highlightInFlow(ids, focus) {
 }
 
 // ------------------------------------------------------------------ 선택 / 상세
+/**
+ * 기본 보기에서 Stream 번호 없는 선을 직접 고름: 경로 양 끝의 설비로 From/To를 짐작하고,
+ * 분석 결과에서 같은 설비를 잇는 라인을 찾아 보여 준다
+ */
+function selectFree({ trace, ends, key }) {
+  const [fi, page] = key.split(':').map(Number);
+  const here = state.result.nodes.filter((n) => n.loc?.bbox && n.loc.file_index === fi && n.loc.page === page && n.category !== 'instrument' && n.category !== 'valve');
+  const boxDist = (p, b) => Math.hypot(Math.max(b[0] - p[0], 0, p[0] - b[2]), Math.max(b[1] - p[1], 0, p[1] - b[3]));
+  const nearNode = (p) => {
+    let best = null, bestD = 0.06;
+    for (const n of here) { const d = boxDist(p, n.loc.bbox); if (d < bestD) { bestD = d; best = n; } }
+    return best;
+  };
+  const endNodes = ends.map((e) => ({ ...e, node: nearNode(e.p) }));
+  const uniq = (xs) => [...new Map(xs.filter(Boolean).map((n) => [n.id, n])).values()];
+  const to = uniq(endNodes.filter((e) => e.arrow).map((e) => e.node));
+  const from = uniq(endNodes.filter((e) => !e.arrow).map((e) => e.node)).filter((n) => !to.includes(n));
+  const ids = new Set([...from, ...to].map((n) => n.id));
+  const candidates = lineRows().filter((l) => ids.has(l.from_id) && ids.has(l.to_id))
+    .concat(lineRows().filter((l) => (ids.has(l.from_id) || ids.has(l.to_id)) && !(ids.has(l.from_id) && ids.has(l.to_id))).slice(0, 6));
+  const xs = trace.segs.flatMap((s) => [s[0], s[2]]), ys = trace.segs.flatMap((s) => [s[1], s[3]]);
+  state.free = {
+    from, to, candidates, arrows: trace.arrows.length,
+    loc: { file_index: fi, page, bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], source: 'text' },
+  };
+  state.selected = { type: 'free', id: FREE_ID };
+  highlightInFlow([FREE_ID], false);
+  renderDetail();
+  markSelectedRows();
+}
+
+function freeDetail() {
+  const f = state.free;
+  if (!f) return '<p class="muted">항목을 찾을 수 없습니다.</p>';
+  const nodes = (xs) => (xs.length ? xs.map((n) => goNode(n.id)).join(', ') : '<span class="muted">확인 안 됨</span>');
+  return `
+    <span class="badge line">도면 선</span>
+    <h3>Stream 번호 없는 선</h3>
+    <p class="sub">분석 결과에 Stream 번호로 등록되지 않은 선입니다. 도면에서 이어진 경로를 붉게 표시했습니다.</p>
+    <table class="kv">
+      <tr><th>From (추정)</th><td>${nodes(f.from)}</td></tr>
+      <tr><th>To (추정)</th><td>${nodes(f.to)}</td></tr>
+      <tr><th>도면</th><td>${esc(drawingLabel(f.loc))}</td></tr>
+    </table>
+    <p class="muted" style="font-size:12px">From/To는 경로 양 끝에 가장 가까운 설비·연결 표시로 짐작한 것입니다. 화살 머리가 닿은 쪽을 To로 봅니다.</p>
+    ${f.candidates.length ? `<h4>분석 결과에서 같은 설비에 연결된 라인</h4><ul>${f.candidates.map((l) => `<li>${goLine(l)} <span class="muted">${esc(nodeName(l.from_id) || '?')} → ${esc(nodeName(l.to_id) || '?')}</span></li>`).join('')}</ul>` : ''}
+    <div class="actions-row"><button class="btn small primary" data-view>도면에서 위치 보기</button></div>`;
+}
+
 function selectedIds(sel) {
+  if (sel.type === 'free') return [FREE_ID];
   if (sel.type === 'issue') return issueById(sel.id)?.related_ids || [];
   if (sel.type === 'stream') return mbLinesOf(sel.id).map((l) => l.id);
   return [sel.id];
@@ -875,6 +926,7 @@ function renderDetail() {
   else if (sel.type === 'line') box.innerHTML = lineDetail(lineById(sel.id));
   else if (sel.type === 'legend') box.innerHTML = legendDetail(legendById(sel.id));
   else if (sel.type === 'stream') box.innerHTML = streamDetail(streamById(sel.id));
+  else if (sel.type === 'free') box.innerHTML = freeDetail();
   else box.innerHTML = issueDetail(issueById(sel.id));
 
   box.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', () => {
@@ -886,6 +938,10 @@ function renderDetail() {
 
 /** 항목의 도면 위치 열기 (물질수지 스트림은 매칭된 라인 위치) */
 function openItem(type, id) {
+  if (type === 'free') {
+    if (state.free) openViewer({ loc: state.free.loc, title: 'Stream 번호 없는 선', sub: '도면에서 고른 선' });
+    return;
+  }
   if (type === 'stream') {
     const l = mbLinesOf(id).find((x) => x.loc);
     if (l) openViewer(viewTarget(l, 'line'));
