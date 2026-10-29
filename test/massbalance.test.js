@@ -34,7 +34,7 @@ test('엑셀과 CSV 물질수지를 같은 내용으로 읽는다 (단위 열, �
   assert.deepEqual([s3.description, s3.from, s3.to, s3.line_no], ['Preheated feed', 'E-101', 'V-101', '']);
   const names = xlsx.properties.map((p) => `${p.name}|${p.unit}`);
   assert.ok(names.includes('PRESSURE|kPa(g)'));
-  assert.ok(names.includes('WATER (COMPONENT MASS FLOW)|kg/h'), '묶음 행의 단위를 성분 행이 물려받음');
+  assert.ok(names.includes('WATER (Component Mass Flow)|kg/h'), '묶음 행의 단위를 성분 행이 물려받음');
   assert.equal(defaultValueKey(valueOptions({ lines: [], mass_balance: xlsx })), 'massflownormal|kg/h');
 });
 
