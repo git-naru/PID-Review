@@ -72,6 +72,7 @@ export const SHEET_SHAPE = `{
     "size": string, "fluid_code": string, "spec_class": string, "insulation": string, "service": string,
     "from_id": string, "to_id": string,   // node ids from "nodes" above, or "" when not connected
     "inline_items": [string],             // tags of valves / instruments installed on the line
+    "stream_no": string,                  // stream number marker (diamond/flag/box) written on the line, else ""
     "specs": [{"name": string, "value": string}],  // stream / line data from a stream table or line list (flow, density, temperature...), original units; [] when none
     "bbox": [x0, y0, x1, y1] | null,      // around the line number label
     "confidence": "high" | "medium" | "low",

@@ -1,6 +1,6 @@
 # 인수인계: P&ID/PFD 분석 도구 (투자비 산출 입력용)
 
-최종 갱신: 2026-10-29
+최종 갱신: 2026-10-29 (물질수지 연동 추가)
 
 ## 1. 목적
 엔지니어링 산출물인 P&ID(및 PFD) PDF를 분석해 투자비(CAPEX) 산출의 입력 조건을 만드는 도구.
@@ -28,13 +28,18 @@
   3. **로컬 서버** (`npm start`, Anthropic API 키 필요)
      - 실제 키로는 실행해 본 적이 없다.
 - **결과 공유**: 분석 결과를 화면 그대로 동작하는 **단일 HTML 파일**(보기 전용, 오프라인)로도 만든다.
+- **물질수지(Mass Balance) 연동**: **물질수지 입력** 버튼으로 H&MB 표(xlsx/csv/텍스트 PDF)를 넣으면 브라우저에서 읽어 도면 라인과 매칭한다(`shared/massbalance.js`, Claude 호출 없음).
+  - 매칭 순서: 스트림 번호 → Line No. 행 → From/To 설비 태그
+  - Flow 라인에 선택한 값(기본: 정상 질량 유량)을 붙이고, 선 굵기로도 보여 준다.
+  - PFD는 스트림 번호로 대부분 매칭된다. P&ID는 물질수지에 Line No.나 From/To 행이 있어야 매칭된다.
+  - 엑셀 라이브러리 없이 zip/XML을 직접 읽는다. 외부 의존성과 보안 취약점을 피하기 위해서다. .xls와 DRM 파일은 읽지 못한다.
 
 ## 3. 현재 진행 상황
 - **저장소**: `git-naru/PID-Review`
   - 작업 브랜치는 `claude/sharp-brown-2w1b2p`이다.
   - PR #1, #2는 `main`에 머지됐다.
-  - **그 뒤 커밋 6개는 아직 `main`에 없다**(PR 미생성). 내용: 대량 시트 이어서 분석, 채팅 분석 모드, PFD 지원, 병합 버그 수정, 단일 HTML 내보내기.
-  - 테스트 10개가 통과한다(`npm test`).
+  - **그 뒤 커밋들은 아직 `main`에 없다**(PR 미생성). 내용: 대량 시트 이어서 분석, 채팅 분석 모드, PFD 지원, 병합 버그 수정, 단일 HTML 내보내기, 물질수지 연동.
+  - 테스트 16개가 통과한다(`npm test`).
 - **아티팩트 페이지**
   - 채팅 분석용 (비공개): https://claude.ai/artifact/BjLxfaLP3jJLLJ3mk1TbND
   - 페이지에서 바로 분석용 ("링크가 있는 누구나" 공유 상태): https://claude.ai/artifact/4x6tjroj1SAKnMPnw9Ga2f
@@ -49,6 +54,11 @@
   - 이 때문에 "미연결 설비"와 "대응 Off-page 없음"이 대량으로 잘못 나왔다.
   - `shared/merge.js`에서 도면 번호를 붙여 id를 구분하도록 고쳤다.
 - **샘플 도면 리허설**: 실제 Claude 판독으로 설비·배관을 정확히 읽었고, 의도한 결함 6가지를 모두 검출했다. 시트당 1~4분 걸린다.
+
+- **물질수지 기능 추가**(2026-10-29)
+  - 샘플 데모에 샘플 물질수지가 자동 적용된다.
+  - 실제 PFD 결과로 확인했다: 물질수지 47개 중 46개 매칭, 값 불일치 검출.
+  - 채팅 분석 페이지는 물질수지를 `massbalance/current`(db) + JSON asset으로 저장한다.
 
 ## 4. 채팅 분석 처리 절차
 사용자가 "분석 요청했어"라고 하면 아래 순서로 처리한다. 작업 폴더는 세션 scratchpad 아래 `jobN/`이다.
@@ -71,7 +81,7 @@
 - scratchpad는 세션마다 사라지므로 이번 작업 폴더(job1)는 새 세션에 없다. 원본 PDF와 결과 JSON은 아티팩트에 남아 있다.
 
 ## 5. 남은 할 일
-1. **PR 생성 및 머지**: 브랜치의 미머지 커밋 6개를 `main`에 반영한다(사용자 요청 시).
+1. **PR 생성 및 머지**: 브랜치의 미머지 커밋을 `main`에 반영한다(사용자 요청 시).
 2. **실제 P&ID로 검증**: 지금까지 실제 도면은 PFD뿐이었다. 범례 시트가 있는 실제 P&ID 세트로 판독 정확도를 확인한다.
 3. **대량 세트(약 75장) 처리 확인**: 사용자가 처음 75장으로 시도했다가 "페이지에서 바로 분석" 방식이 5/75에서 멈췄다.
    - 이어서 분석과 실패 시트 분할 재시도로 고쳤지만 실제 Claude로는 미검증이다.
@@ -95,10 +105,13 @@
 | `public/index.html`, `app.js`, `styles.css` | 화면 (Flow, 리스트, 검토 항목, 도면 뷰어, 실행 모드 분기) |
 | `public/engine.js` | 페이지에서 바로 분석 (단계별 호출, 이어서 분석, 시트 분할 재시도) |
 | `public/chatmode.js` | 채팅 분석 모드 (업로드 → 분석 요청 → 결과 표시) |
+| `shared/massbalance.js` | 물질수지 읽기(xlsx/csv/PDF), 도면 매칭, 불일치 검출, Flow 표시 값 |
+| `samples/PID-100-MB.xlsx`, `.csv`, `make_sample_mb.py` | 샘플 물질수지와 생성 스크립트 |
+| `test/massbalance.test.js` | 물질수지 테스트 6개 |
 | `public/set-pdf-worker.js` | 단일 HTML용 pdf.js 워커 대체 |
 | `scripts/build-artifact.mjs` | 아티팩트 번들 생성 (`dist/artifact`, `dist/artifact-chat`) |
 | `scripts/build-standalone.mjs` | 보기 전용 단일 HTML 생성 |
 | `scripts/session/prepare.mjs`, `render_pages.py`, `make-prompts.mjs`, `assemble.mjs` | 채팅 세션 분석 단계별 스크립트 |
 | `samples/PID-100-000~002.pdf`, `demo-analysis.json`, `make_sample_pid.py` | 샘플 도면(범례 1 + P&ID 2, 의도적 결함 포함)과 데모 결과 |
-| `test/postprocess.test.js` | 테스트 10개 |
+| `test/postprocess.test.js` | 후처리·병합 테스트 10개 |
 | `README.md` | 실행 방법 전체 |

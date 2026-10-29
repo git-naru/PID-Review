@@ -53,6 +53,7 @@ for (const name of SAMPLE_FILES) {
   await copy(`samples/${name}`, `samples/${name}`);
   files.push({ name, text: await extractPdfText(await fs.readFile(path.join(ROOT, 'samples', name))) });
 }
+await copy('samples/PID-100-MB.csv', 'samples/PID-100-MB.csv');
 const raw = JSON.parse(await fs.readFile(path.join(ROOT, 'samples', 'demo-analysis.json'), 'utf8'));
 const demo = { ...postprocess(raw, files), sampleUrls: SAMPLE_FILES.map((n) => `samples/${n}`), meta: { demo: true } };
 await fs.writeFile(path.join(OUT, 'demo-result.json'), JSON.stringify(demo));

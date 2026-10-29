@@ -85,6 +85,7 @@ export function postprocess(raw, files) {
       from_id: '',
       to_id: '',
       inline_items: arr(l.inline_items).map(s).filter(Boolean),
+      stream_no: s(l.stream_no),
       specs: arr(l.specs).map((x) => ({ name: s(x?.name), value: s(x?.value) })).filter((x) => x.name || x.value),
       loc: normLoc(l.loc, files),
       confidence: s(l.confidence) || 'medium',

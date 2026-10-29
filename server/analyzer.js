@@ -96,7 +96,7 @@ export const ANALYSIS_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'line_no', 'kind', 'size', 'fluid_code', 'spec_class', 'insulation', 'service', 'from_id', 'to_id', 'inline_items', 'loc', 'confidence', 'note'],
+        required: ['id', 'line_no', 'kind', 'size', 'fluid_code', 'spec_class', 'insulation', 'service', 'from_id', 'to_id', 'inline_items', 'stream_no', 'loc', 'confidence', 'note'],
         properties: {
           id: { type: 'string', description: 'Unique id. Use the full line number when available, else "LINE-<n>"' },
           line_no: { type: 'string', description: 'Full line number exactly as written, e.g. 6"-P-1001-A1A. Empty string if none.' },
@@ -109,6 +109,7 @@ export const ANALYSIS_SCHEMA = {
           from_id: { type: 'string', description: 'Node id at the upstream end. Empty string if the line end is not connected to anything identifiable.' },
           to_id: { type: 'string', description: 'Node id at the downstream end. Empty string if not connected.' },
           inline_items: { type: 'array', items: str, description: 'Tags of valves/instruments installed on this line' },
+          stream_no: { type: 'string', description: 'Stream number marker (diamond/flag/box) written on the line, matching the heat & material balance. Empty string if none.' },
           loc: LOC,
           confidence: CONFIDENCE,
           note: str,

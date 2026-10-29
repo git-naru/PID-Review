@@ -22,6 +22,8 @@
     <div class="actions">
       <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden />
       <button class="btn primary" id="btnPick" type="button">PDF 입력</button>
+      <input type="file" id="mbInput" accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt,.pdf" hidden />
+      <button class="btn ghost" id="btnMb" type="button" title="물질수지(Mass Balance) 표: 엑셀(.xlsx), CSV, PDF">물질수지 입력</button>
       <select id="tierSelect" class="tier" title="판독 수준" hidden>
         <option value="complex">정밀 판독</option>
         <option value="default">빠른 판독</option>
@@ -36,6 +38,7 @@
           <button type="button" data-export="instruments">계기·밸브 (CSV)</button>
           <button type="button" data-export="issues">검토 항목 (CSV)</button>
           <button type="button" data-export="legend">범례 (CSV)</button>
+          <button type="button" data-export="massbalance">물질수지 매칭 (CSV)</button>
           <button type="button" data-export="json">전체 결과 (JSON)</button>
         </div>
       </div>
@@ -47,6 +50,7 @@
   <section class="filebar" id="fileBar">
     <span class="muted" id="fileHint">입력된 파일 없음 — 한 장 또는 여러 장의 P&amp;ID PDF를 선택하거나 이 화면에 끌어다 놓으세요.</span>
     <ul class="chips" id="fileChips"></ul>
+    <span class="mb-chip" id="mbChip" hidden><b>물질수지</b><span id="mbChipText"></span><button type="button" id="mbRemove" aria-label="물질수지 빼기" title="물질수지 빼기">×</button></span>
   </section>
 
   <section class="statusbar" id="statusBar" hidden>
@@ -72,6 +76,7 @@
         <h2>공정 Flow</h2>
         <div class="toolbar">
           <select id="drawingFilter" title="도면 선택"><option value="all">전체 도면</option></select>
+          <select id="flowValue" title="라인에 함께 표시할 스트림 값 (물질수지 또는 도면 스트림 표)" hidden></select>
           <label title="계기·밸브와 신호선/설치 위치 연결을 함께 표시"><input type="checkbox" id="optInstruments" /> 계기·밸브</label>
           <label><input type="checkbox" id="optUtility" checked /> 유틸리티</label>
           <button class="btn small" id="btnFit" type="button">화면 맞춤</button>
@@ -92,6 +97,7 @@
           <li><i class="lg ln"></i>공정 배관</li>
           <li><i class="lg ut"></i>유틸리티</li>
           <li><i class="lg bad"></i>검토 필요</li>
+          <li id="lgFlow" hidden><i class="lg thick"></i>선 굵기 = 유량</li>
         </ul>
       </div>
       <p class="hint">설비나 라인을 클릭하면 상세 정보가 표시됩니다.</p>
@@ -109,6 +115,7 @@
           <button class="tab" data-tab="lines" role="tab">배관 리스트 <b id="cntLines">0</b></button>
           <button class="tab" data-tab="instruments" role="tab">계기·밸브 <b id="cntInstruments">0</b></button>
           <button class="tab" data-tab="legend" role="tab" title="P&amp;ID 범례 시트에서 읽은 체계와 기호">범례 <b id="cntLegend">0</b></button>
+          <button class="tab" data-tab="massbalance" role="tab" title="입력한 물질수지 스트림과 도면 매칭 결과" hidden>물질수지 <b id="cntMb">0</b></button>
         </div>
         <input type="search" id="listSearch" placeholder="태그/명칭 검색" />
       </div>

@@ -7,6 +7,7 @@
 //   세션    → db jobs/current: {status: "analyzing", progress}        진행 상황
 //   세션    → assets: 결과 JSON 업로드 후 jobs/current {status: "done", resultAsset}
 //   페이지  ← jobs/current 구독: 완료되면 결과 JSON과 PDF를 불러와 화면에 표시
+//   페이지  → assets: 물질수지 표(읽은 결과 JSON) + db massbalance/current {assetId, name}  다시 열어도 유지
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
@@ -21,7 +22,7 @@ export async function setupChatMode(ui) {
   if (!db) {
     notice.textContent = '이 화면에서는 도면 목록과 분석 결과를 불러올 수 없습니다. claude.ai에 로그인한 상태에서 이 페이지를 열어 주세요. "샘플 데모"는 그대로 볼 수 있습니다.';
     $('#btnPick').disabled = true;
-    return { upload() {}, request() {}, refresh() { $('#btnPick').disabled = true; $('#btnAnalyze').disabled = true; } };
+    return { upload() {}, request() {}, saveMassBalance() {}, refresh() { $('#btnPick').disabled = true; $('#btnAnalyze').disabled = true; } };
   }
   notice.className = 'notice info';
   notice.innerHTML = '<b>사용 방법</b> ① <b>도면 올리기</b>로 범례와 P&amp;ID PDF를 올리고 ② <b>분석 요청</b>을 누른 뒤 ③ Claude Code 채팅에 "분석 요청했어"라고 알려 주세요. 분석은 채팅에서 진행되고, 끝나면 이 페이지에 결과가 자동으로 표시됩니다.';
@@ -166,8 +167,46 @@ export async function setupChatMode(ui) {
     }
   }
 
+  // ---- 물질수지: 읽은 표를 JSON으로 저장해 다음에 열 때도 적용
+  const mbRef = db.doc('massbalance/current');
+  let mbAsset = null;
+  mbRef.onSnapshot((snap) => {
+    const d = snap.exists ? snap.data() : null;
+    if (!d?.assetId) {
+      if (mbAsset) { mbAsset = null; ui.setMassBalance(null, { quiet: true }); }
+      return;
+    }
+    if (d.assetId === mbAsset) return;
+    mbAsset = d.assetId;
+    fetch(`/_blob/${d.assetId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((mb) => ui.setMassBalance(mb, { quiet: true }))
+      .catch(() => { mbAsset = null; toast('저장된 물질수지를 불러오지 못했습니다.', true); });
+  }, () => {});
+
+  async function saveMassBalance(mb) {
+    if (!assets) {
+      if (mb) toast('물질수지를 이 화면에만 적용했습니다. 페이지에 저장하려면 편집 권한이 필요합니다.');
+      return;
+    }
+    const prev = mbAsset;
+    try {
+      if (mb) {
+        const res = await assets.upload(new Blob([JSON.stringify(mb)], { type: 'application/json' }), { type: 'application/json' });
+        mbAsset = res.id;
+        await mbRef.set({ assetId: res.id, name: mb.name, streams: mb.streams.length, uploadedAt: new Date().toISOString() });
+      } else {
+        mbAsset = null;
+        await mbRef.delete();
+      }
+      if (prev) await assets.delete(prev).catch(() => {});
+    } catch (e) {
+      toast(`물질수지를 페이지에 저장하지 못했습니다. ${uploadErrorMessage(e)}`, true);
+    }
+  }
+
   renderFiles();
-  return { upload, request, refresh: renderFiles };
+  return { upload, request, saveMassBalance, refresh: renderFiles };
 }
 
 function uploadErrorMessage(e) {

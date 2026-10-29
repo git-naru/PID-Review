@@ -1,6 +1,10 @@
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 import { analyzeInBrowser } from './engine.js';
 import { setupChatMode } from './chatmode.js';
+import {
+  readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
+  valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel,
+} from './shared/massbalance.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
 
@@ -33,6 +37,10 @@ const state = {
   sev: 'all',
   selected: null, // {type:'node'|'line'|'issue', id}
   pdfDocs: new Map(),
+  massBalance: null, // 입력한 물질수지 표 (분석 결과가 바뀌어도 다시 매칭)
+  flowKey: null, // Flow에 표시할 값 (null: 자동 선택, '': 표시 안 함)
+  valueOptions: [],
+  lineStream: new Map(), // 라인 id → 매칭된 물질수지 스트림
 };
 
 // ------------------------------------------------------------------ 초기화
@@ -53,6 +61,7 @@ async function init() {
       $, esc, toast, applyResult, showRunBox,
       setRunAction: (fn) => { runAction = fn; },
       setDownloads: (d) => { runtime.downloads = d; },
+      setMassBalance: (mb, opts) => setMassBalance(mb, opts),
     });
     return;
   }
@@ -81,8 +90,7 @@ async function init() {
 
 /** 보기 전용 HTML: 들어 있는 결과와 도면을 바로 표시 */
 function initStatic(notice) {
-  ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect'].forEach((s) => { $(s).hidden = true; });
-  $('#fileBar').hidden = true;
+  ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect', '#fileHint', '#fileChips'].forEach((s) => { $(s).hidden = true; });
   const data = JSON.parse(STATIC_DATA.textContent);
   const toBuffer = (b64) => {
     const bin = atob(b64);
@@ -107,6 +115,14 @@ function bindUpload() {
   });
   $('#btnAnalyze').addEventListener('click', analyze);
   $('#btnDemo').addEventListener('click', loadDemo);
+  const mbInput = $('#mbInput');
+  $('#btnMb').addEventListener('click', () => mbInput.click());
+  mbInput.addEventListener('change', () => {
+    const f = mbInput.files[0];
+    mbInput.value = '';
+    if (f) loadMassBalance(f);
+  });
+  $('#mbRemove').addEventListener('click', () => setMassBalance(null, { persist: true }));
 
   let depth = 0;
   window.addEventListener('dragenter', (e) => { if (hasFiles(e)) { depth++; $('#dropOverlay').hidden = false; } });
@@ -130,7 +146,18 @@ function bindUpload() {
 
 const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
 
+const isMassBalanceFile = (f) => /\.(xlsx|xlsm|xls|csv|tsv)$/i.test(f.name);
+
 function addFiles(files) {
+  // 끌어다 놓은 엑셀·CSV는 물질수지로 받는다
+  const mbFile = files.find(isMassBalanceFile);
+  if (mbFile) loadMassBalance(mbFile);
+  files = files.filter((f) => !isMassBalanceFile(f));
+  if (!files.length) return;
+  if (MODE === 'static') {
+    toast('보기 전용 파일에는 도면을 추가할 수 없습니다. 물질수지(엑셀·CSV)는 입력할 수 있습니다.', true);
+    return;
+  }
   if (MODE === 'chat') {
     runtime.chat?.upload(files);
     return;
@@ -276,13 +303,81 @@ async function loadDemo() {
     if (!res.ok) throw new Error(`샘플 로드 실패 (${res.status})`);
     const result = await res.json();
     const sources = await Promise.all(result.sampleUrls.map(async (u) => (await fetch(u)).arrayBuffer()));
+    // 샘플 물질수지도 함께 적용해 Flow에 유량이 표시되도록 한다
+    const mbRes = await fetch('samples/PID-100-MB.csv');
+    if (mbRes.ok) {
+      const mb = await readMassBalanceFile('PID-100-MB.csv', await mbRes.arrayBuffer());
+      state.massBalance = { ...mb, name: '샘플 물질수지 PID-100-MB.csv', demo: true };
+      state.flowKey = null;
+      renderMbChip();
+    }
     applyResult(result, sources);
-    toast('샘플 범례(PID-100-000) + P&ID 2장(PID-100-001, 002)에 대한 데모 결과입니다.\n검토 필요 항목을 더블클릭해 도면 위치를 확인해 보세요.');
+    toast('샘플 범례(PID-100-000) + P&ID 2장(PID-100-001, 002)과 샘플 물질수지에 대한 데모 결과입니다.\n검토 필요 항목을 더블클릭해 도면 위치를 확인해 보세요.');
   } catch (err) {
     toast(err.message, true);
   } finally {
     setBusy(false);
   }
+}
+
+// ------------------------------------------------------------------ 물질수지
+async function loadMassBalance(file) {
+  if (file.size > 20 * 1048576) {
+    toast('물질수지 파일이 20MB를 넘습니다. 필요한 시트만 남겨 다시 저장해 주세요.', true);
+    return;
+  }
+  try {
+    const mb = await readMassBalanceFile(file.name, await file.arrayBuffer(), { pdfjs: pdfjsLib });
+    await setMassBalance(mb, { persist: true });
+  } catch (e) {
+    toast(e instanceof MassBalanceError ? e.message : `물질수지를 읽지 못했습니다: ${e.message}`, true);
+  }
+}
+
+/** 물질수지를 넣거나(mb) 뺀다(null). 분석 결과가 있으면 바로 다시 매칭한다 */
+async function setMassBalance(mb, { persist = false, quiet = false } = {}) {
+  state.massBalance = mb;
+  state.flowKey = null;
+  renderMbChip();
+  if (persist && MODE === 'chat') runtime.chat?.saveMassBalance(mb);
+  if (state.result) {
+    applyResult(state.result, state.sources);
+    const st = state.result.mass_balance?.stats;
+    if (st && !quiet) {
+      toast(`물질수지 스트림 ${st.streams}개 중 ${st.matched_streams}개를 도면 라인 ${st.matched_lines}개와 매칭했습니다.`
+        + (st.matched_streams < st.streams ? '\n매칭되지 않은 스트림은 물질수지 탭과 검토 항목에서 확인하세요.' : ''));
+    }
+  } else if (mb && !quiet) {
+    toast(`물질수지 스트림 ${mb.streams.length}개를 읽었습니다. 도면 분석 결과가 나오면 자동으로 매칭합니다.`);
+  }
+}
+
+function renderMbChip() {
+  const mb = state.massBalance;
+  $('#mbChip').hidden = !mb;
+  if (!mb) return;
+  $('#mbChipText').textContent = `${mb.name}${mb.sheet && mb.sheet !== mb.name ? ` · ${mb.sheet}` : ''} · 스트림 ${mb.streams.length}개`;
+  $('#mbChip').title = mb.name;
+}
+
+const optLabel = (o) => (o.unit ? `${o.name} (${o.unit})` : o.name);
+const currentValueKey = () => $('#flowValue').value;
+const currentOption = () => state.valueOptions.find((o) => o.key === currentValueKey()) || null;
+const valueOf = (l, key = currentValueKey()) => (key && l.kind !== 'signal' ? lineValue(l, key, (id) => state.lineStream.get(id)) : null);
+const valueText = (v, opt = currentOption()) => (v ? `${formatValue(v.value)}${opt?.unit ? ` ${opt.unit}` : ''}` : '');
+const mbStreams = () => state.result?.mass_balance?.streams || [];
+const streamById = (id) => mbStreams().find((s) => s.id === id);
+const mbLinesOf = (streamId) => (state.result?.mass_balance?.matches || []).filter((m) => m.stream_id === streamId).map((m) => lineById(m.line_id)).filter(Boolean);
+
+/** Flow 위 값 선택 상자: 물질수지 속성 + 도면 스트림 표 항목 */
+function buildValueSelect() {
+  const sel = $('#flowValue');
+  state.valueOptions = valueOptions(state.result);
+  if (state.flowKey && !state.valueOptions.some((o) => o.key === state.flowKey)) state.flowKey = null;
+  sel.innerHTML = '<option value="">값 표시 안 함</option>'
+    + state.valueOptions.map((o) => `<option value="${esc(o.key)}">${esc(optLabel(o))}</option>`).join('');
+  sel.value = state.flowKey ?? defaultValueKey(state.valueOptions);
+  sel.hidden = !state.valueOptions.length;
 }
 
 function setBusy(busy, msg, stoppable = false) {
@@ -300,6 +395,16 @@ function setBusy(busy, msg, stoppable = false) {
 
 // ------------------------------------------------------------------ 결과 반영
 function applyResult(result, sources) {
+  if (result !== state.result) {
+    // 샘플 물질수지는 샘플 데모에만 쓴다
+    if (state.massBalance?.demo && !result.meta?.demo) { state.massBalance = null; renderMbChip(); }
+    // 물질수지가 들어 있는 결과(보기 전용 HTML, 내보낸 JSON)는 그 물질수지를 이어서 쓴다
+    if (result.mass_balance && !state.massBalance) { state.massBalance = massBalanceSource(result.mass_balance); renderMbChip(); }
+  }
+  result = state.massBalance ? applyMassBalance(result, state.massBalance) : stripMassBalance(result);
+  const mbx = result.mass_balance;
+  const streamsById = new Map((mbx?.streams || []).map((x) => [x.id, x]));
+  state.lineStream = new Map((mbx?.matches || []).map((m) => [m.line_id, streamsById.get(m.stream_id)]));
   // 같은 파일의 중간 결과 갱신이면 열린 PDF와 선택 항목을 유지
   const sameSources = sources === state.sources;
   if (!sameSources) {
@@ -314,7 +419,8 @@ function applyResult(result, sources) {
   if (sameSources && prevSel) {
     const exists = prevSel.type === 'node' ? result.nodes.some((n) => n.id === prevSel.id)
       : prevSel.type === 'line' ? result.lines.some((l) => l.id === prevSel.id)
-        : prevSel.type === 'issue' ? result.issues.some((i) => i.id === prevSel.id) : true;
+        : prevSel.type === 'issue' ? result.issues.some((i) => i.id === prevSel.id)
+          : prevSel.type === 'stream' ? (mbx?.streams || []).some((x) => x.id === prevSel.id) : true;
     if (exists) state.selected = prevSel;
   }
 
@@ -329,6 +435,7 @@ function applyResult(result, sources) {
     + `<span class="stat high">검토 높음<b>${s.issues.high}</b></span><span class="stat medium">중간<b>${s.issues.medium}</b></span><span class="stat">낮음<b>${s.issues.low}</b></span>`
     + (result.doc_type === 'pfd' ? '<span class="stat">PFD</span>'
       : result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
+    + (mbx ? `<span class="stat" title="물질수지 스트림 중 도면과 매칭된 수">물질수지 매칭<b>${mbx.stats.matched_streams}/${mbx.stats.streams}</b></span>` : '')
     + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '')
     + (result.meta?.progress && result.meta.progress.done < result.meta.progress.total
       ? `<span class="stat medium">판독<b>${result.meta.progress.done}/${result.meta.progress.total}</b></span>` : '');
@@ -348,6 +455,10 @@ function applyResult(result, sources) {
   $('.tab[data-tab="lines"]').firstChild.textContent = isPfd() ? '스트림 리스트 ' : '배관 리스트 ';
   $('#cntInstruments').textContent = instrumentRows().length;
   $('#cntLegend').textContent = legendRows().length;
+  $('.tab[data-tab="massbalance"]').hidden = !mbx;
+  $('#cntMb').textContent = mbStreams().length;
+  if (!mbx && state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
+  buildValueSelect();
 
   renderFlow();
   renderList();
@@ -385,6 +496,12 @@ let cy = null;
 
 function bindFlowToolbar() {
   ['#optInstruments', '#optUtility', '#drawingFilter'].forEach((s) => $(s).addEventListener('change', applyFlowFilter));
+  $('#flowValue').addEventListener('change', () => {
+    state.flowKey = currentValueKey();
+    updateFlowValues();
+    renderList();
+    renderDetail();
+  });
   $('#btnFit').addEventListener('click', () => cy?.fit(cy.elements(':visible'), 30));
 }
 
@@ -408,7 +525,7 @@ function renderFlow() {
     if (!tgt) { tgt = `u:${l.id}:to`; els.push({ group: 'nodes', data: { id: tgt, ref: l.id, type: 'dangling', category: 'unknown', label: '?', page }, classes: 'unknown' }); }
     els.push({
       group: 'edges',
-      data: { id: `l:${l.id}`, ref: l.id, type: 'line', source: src, target: tgt, kind: l.kind, label: l.kind === 'signal' ? '' : (l.line_no || (isPfd() ? '' : '(번호 없음)')) },
+      data: { id: `l:${l.id}`, ref: l.id, type: 'line', source: src, target: tgt, kind: l.kind, base: l.kind === 'signal' ? '' : (l.line_no || (isPfd() ? '' : '(번호 없음)')) },
       classes: [l.kind, l.issue_ids.length ? 'flag' : ''].join(' '),
     });
   }
@@ -444,7 +561,26 @@ function renderFlow() {
     const item = d.type === 'node' ? nodeById(d.ref) : lineById(d.ref);
     if (item) openViewer(viewTarget(item, d.type === 'node' ? 'node' : 'line'));
   });
+  updateFlowValues();
   applyFlowFilter();
+}
+
+/** 라인 라벨에 선택한 값(유량 등)을 붙이고, 유량이면 선 굵기로도 보여준다 */
+function updateFlowValues() {
+  if (!cy) return;
+  const opt = currentOption();
+  const vals = new Map();
+  if (opt) for (const l of state.result.lines) { const v = valueOf(l, opt.key); if (v) vals.set(l.id, v); }
+  const nums = opt?.flow ? [...vals.values()].map((v) => toNumber(v.value)).filter((n) => n > 0) : [];
+  const lo = Math.log(Math.min(...nums)), hi = Math.log(Math.max(...nums));
+  cy.batch(() => cy.edges('[type = "line"]').forEach((e) => {
+    const v = vals.get(e.data('ref'));
+    e.data('label', [e.data('base'), valueText(v, opt)].filter(Boolean).join('\n'));
+    const n = v && nums.length ? toNumber(v.value) : NaN;
+    if (n > 0) e.data('w', hi > lo ? 1.5 + (5 * (Math.log(n) - lo)) / (hi - lo) : 3);
+    else e.removeData('w');
+  }));
+  $('#lgFlow').hidden = !nums.length;
 }
 
 function nodeLabel(n) {
@@ -523,7 +659,7 @@ function flowStyle() {
     { selector: 'edge', style: {
       width: 2, 'line-color': line, 'target-arrow-color': line, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9,
       'curve-style': 'taxi', 'taxi-direction': 'rightward', 'taxi-turn': '50%',
-      label: 'data(label)', 'font-size': 9, 'font-family': font, 'text-background-color': surface, 'text-background-opacity': 0.9, 'text-background-padding': 2,
+      label: 'data(label)', 'text-wrap': 'wrap', 'font-size': 9, 'font-family': font, 'text-background-color': surface, 'text-background-opacity': 0.9, 'text-background-padding': 2,
       'text-rotation': 'none', color: text,
     } },
     { selector: 'edge.utility', style: { 'line-color': utility, 'target-arrow-color': utility, 'line-style': 'dashed', width: 1.6, color: utility } },
@@ -531,6 +667,7 @@ function flowStyle() {
     { selector: 'edge.assoc', style: { 'line-color': border, 'target-arrow-shape': 'none', 'line-style': 'dotted', width: 1.2, 'curve-style': 'bezier' } },
     { selector: 'edge.link', style: { 'line-color': opc, 'target-arrow-color': opc, 'line-style': 'dashed', width: 2, color: opc, 'curve-style': 'bezier' } },
     { selector: 'edge.flag', style: { 'line-color': high, 'target-arrow-color': high, color: high } },
+    { selector: 'edge[w]', style: { width: 'data(w)' } },
     { selector: ':selected', style: { 'overlay-color': primary, 'overlay-opacity': 0.2, 'overlay-padding': 6 } },
     { selector: 'edge:selected', style: { width: 4 } },
   ];
@@ -555,6 +692,7 @@ function select(sel, from) {
   state.selected = sel;
   let ids = [sel.id];
   if (sel.type === 'issue') ids = issueById(sel.id)?.related_ids || [];
+  if (sel.type === 'stream') ids = mbLinesOf(sel.id).map((l) => l.id);
   if (from !== 'flow') highlightInFlow(ids, true);
   else highlightInFlow(ids, false);
   renderDetail();
@@ -571,16 +709,26 @@ function renderDetail() {
   if (sel.type === 'node') box.innerHTML = nodeDetail(nodeById(sel.id));
   else if (sel.type === 'line') box.innerHTML = lineDetail(lineById(sel.id));
   else if (sel.type === 'legend') box.innerHTML = legendDetail(legendById(sel.id));
+  else if (sel.type === 'stream') box.innerHTML = streamDetail(streamById(sel.id));
   else box.innerHTML = issueDetail(issueById(sel.id));
 
   box.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', () => {
     const [type, ...rest] = el.dataset.go.split(':');
     select({ type, id: rest.join(':') });
   }));
-  box.querySelector('[data-view]')?.addEventListener('click', () => {
-    const item = sel.type === 'node' ? nodeById(sel.id) : sel.type === 'line' ? lineById(sel.id) : sel.type === 'legend' ? legendById(sel.id) : issueById(sel.id);
-    openViewer(viewTarget(item, sel.type));
-  });
+  box.querySelector('[data-view]')?.addEventListener('click', () => openItem(sel.type, sel.id));
+}
+
+/** 항목의 도면 위치 열기 (물질수지 스트림은 매칭된 라인 위치) */
+function openItem(type, id) {
+  if (type === 'stream') {
+    const l = mbLinesOf(id).find((x) => x.loc);
+    if (l) openViewer(viewTarget(l, 'line'));
+    else toast('이 스트림은 도면에서 찾지 못해 위치를 표시할 수 없습니다.', true);
+    return;
+  }
+  const item = type === 'node' ? nodeById(id) : type === 'line' ? lineById(id) : type === 'legend' ? legendById(id) : issueById(id);
+  if (item) openViewer(viewTarget(item, type));
 }
 
 const goNode = (id) => (id ? `<button class="link" data-go="node:${esc(id)}">${esc(nodeName(id))}</button>` : '<span class="warn" style="color:var(--high)">연결처 없음</span>');
@@ -637,9 +785,50 @@ function lineDetail(l) {
       ${l.note ? `<tr><th>비고</th><td>${esc(l.note)}</td></tr>` : ''}
     </table>
     ${l.specs?.length ? `<h4>${pfd ? '스트림 데이터 (물질수지표)' : '라인 데이터'}</h4><table class="kv">${l.specs.map((x) => `<tr><th>${esc(x.name)}</th><td>${esc(x.value)}</td></tr>`).join('')}</table>` : ''}
+    ${massBalanceBlock(l)}
     ${l.inline_items.length ? `<h4>설치 계기·밸브</h4><ul>${l.inline_items.map((t) => { const n = state.result.nodes.find((x) => x.tag.toUpperCase() === t.toUpperCase()); return `<li>${n ? goNode(n.id) : esc(t)}</li>`; }).join('')}</ul>` : ''}
     ${issuesBlock(l.issue_ids)}
     <div class="actions-row"><button class="btn small primary" data-view>도면에서 위치 보기</button></div>`;
+}
+
+/** 물질수지 스트림 값 표 (선택한 표시 값은 강조) */
+function streamValuesTable(st) {
+  const key = currentValueKey();
+  const props = state.result.mass_balance.properties.filter((p) => st.values[p.key] !== undefined);
+  if (!props.length) return '';
+  return `<table class="kv wide">${props.map((p) => `<tr${p.key === key ? ' class="hl-row"' : ''}><th>${esc(p.name)}${p.unit ? ` <span class="muted">${esc(p.unit)}</span>` : ''}</th><td>${esc(formatValue(st.values[p.key]))}</td></tr>`).join('')}</table>`;
+}
+
+function massBalanceBlock(l) {
+  const mbx = state.result.mass_balance;
+  if (!mbx || l.kind === 'signal') return '';
+  const st = state.lineStream.get(l.id);
+  if (!st) return '<h4>물질수지</h4><p class="muted">매칭된 물질수지 스트림이 없습니다.</p>';
+  const m = mbx.matches.find((x) => x.line_id === l.id);
+  return `<h4>물질수지 · <button class="link" data-go="stream:${esc(st.id)}">스트림 ${esc(st.id)}</button> <span class="muted">(${esc(matchMethodLabel(m?.method))}로 매칭)</span></h4>
+    ${st.description ? `<p class="sub">${esc(st.description)}</p>` : ''}${streamValuesTable(st)}`;
+}
+
+function streamDetail(st) {
+  if (!st) return '<p class="muted">항목을 찾을 수 없습니다.</p>';
+  const mbx = state.result.mass_balance;
+  const lines = mbLinesOf(st.id);
+  const method = (id) => matchMethodLabel(mbx.matches.find((x) => x.line_id === id && x.stream_id === st.id)?.method);
+  return `
+    <span class="badge line">물질수지 스트림</span>
+    <h3>스트림 ${esc(st.id)}</h3>
+    <p class="sub">${esc(st.description)}</p>
+    <table class="kv">
+      ${st.from ? `<tr><th>From</th><td>${esc(st.from)}</td></tr>` : ''}
+      ${st.to ? `<tr><th>To</th><td>${esc(st.to)}</td></tr>` : ''}
+      ${st.line_no ? `<tr><th>Line No.</th><td>${esc(st.line_no)}</td></tr>` : ''}
+      <tr><th>파일</th><td>${esc(mbx.name)}${mbx.sheet && mbx.sheet !== mbx.name ? ` · ${esc(mbx.sheet)}` : ''}</td></tr>
+    </table>
+    <h4>도면 매칭 (${lines.length})</h4>
+    ${lines.length ? `<ul>${lines.map((l) => `<li>${goLine(l)} <span class="muted">${esc(method(l.id))} · ${esc(drawingLabel(l.loc))}</span></li>`).join('')}</ul>` : '<p class="muted" style="color:var(--high)">입력한 도면에서 이 스트림을 찾지 못했습니다.</p>'}
+    <h4>물질수지 값</h4>
+    ${streamValuesTable(st) || '<p class="muted">값 없음</p>'}
+    ${lines.length ? '<div class="actions-row"><button class="btn small primary" data-view>도면에서 위치 보기</button></div>' : ''}`;
 }
 
 function legendDetail(e) {
@@ -775,20 +964,58 @@ function legendRows() {
 }
 const legendById = (id) => legendRows().find((r) => r.id === id);
 
+const MB_DEF = {
+  rows: () => mbStreams().map((st) => {
+    const lines = mbLinesOf(st.id);
+    return { ...st, lines, issue_ids: [], flag: !lines.length };
+  }),
+  cols: () => [['No', 44], ['Stream', 80], ['설명', 200], ['From', 110], ['To', 110], ...(currentOption() ? [[optLabel(currentOption()), 120]] : []), ['도면 매칭', 170], ['방법', 96]],
+  cells: (st, i) => {
+    const opt = currentOption();
+    const m = state.result.mass_balance.matches.find((x) => x.stream_id === st.id);
+    return [
+      i + 1, `<span class="tag">${esc(st.id)}</span>`, esc(st.description), esc(st.from), esc(st.to),
+      ...(opt ? [st.values[opt.key] !== undefined ? esc(formatValue(st.values[opt.key])) : '<span class="muted">-</span>'] : []),
+      st.lines.length ? esc(st.lines.map((l) => l.line_no || l.id).filter((v, k, a) => a.indexOf(v) === k).join(', ')) : '<span class="warn">도면에 없음</span>',
+      m ? esc(matchMethodLabel(m.method)) : '',
+    ];
+  },
+  title: (st) => st.description,
+  type: 'stream',
+  search: (st) => `${st.id} ${st.description} ${st.from} ${st.to} ${st.line_no}`,
+};
+
+/** 배관·스트림 리스트에 선택한 표시 값 열을 끼워 넣는다 */
+function withValueColumn(def) {
+  const opt = currentOption();
+  if (!opt || def.type !== 'line') return def;
+  return {
+    ...def,
+    cols: [...def.cols.slice(0, 2), [optLabel(opt), 120], ...def.cols.slice(2)],
+    cells: (l, i) => {
+      const c = def.cells(l, i);
+      const v = valueOf(l, opt.key);
+      c.splice(2, 0, v ? `${esc(formatValue(v.value))}${v.source === 'drawing' ? ' <span class="muted" title="물질수지가 아니라 도면 스트림 표의 값">(도면)</span>' : ''}` : '<span class="muted">-</span>');
+      return c;
+    },
+  };
+}
+
 function renderList() {
-  const def = state.tab === 'lines' && isPfd() ? PFD_STREAMS_DEF : LIST_DEFS[state.tab];
+  const def = withValueColumn(state.tab === 'lines' && isPfd() ? PFD_STREAMS_DEF : state.tab === 'massbalance' ? MB_DEF : LIST_DEFS[state.tab]);
+  const cols = typeof def.cols === 'function' ? def.cols() : def.cols;
   const q = $('#listSearch').value.trim().toUpperCase();
   const all = def.rows();
   const rows = q ? all.filter((r) => def.search(r).toUpperCase().includes(q)) : all;
   const table = $('#listTable');
-  table.querySelector('thead').innerHTML = `<tr>${def.cols.map(([h, w]) => `<th${w ? ` style="width:${w}px"` : ''}>${h}</th>`).join('')}</tr>`;
+  table.querySelector('thead').innerHTML = `<tr>${cols.map(([h, w]) => `<th${w ? ` style="width:${w}px"` : ''}>${esc(h)}</th>`).join('')}</tr>`;
   const tbody = table.querySelector('tbody');
   if (!state.result) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${def.cols.length}">분석 결과가 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">분석 결과가 없습니다.</td></tr>`;
   } else if (!rows.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${def.cols.length}">${q ? '검색 결과가 없습니다.' : '항목이 없습니다.'}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${q ? '검색 결과가 없습니다.' : '항목이 없습니다.'}</td></tr>`;
   } else {
-    tbody.innerHTML = rows.map((r, i) => `<tr data-type="${def.type}" data-id="${esc(r.id)}" class="${r.issue_ids.length ? 'flag' : ''}" title="${esc(def.title(r) || '')}">${def.cells(r, i).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
+    tbody.innerHTML = rows.map((r, i) => `<tr data-type="${def.type}" data-id="${esc(r.id)}" class="${r.issue_ids.length || r.flag ? 'flag' : ''}" title="${esc(def.title(r) || '')}">${def.cells(r, i).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
   }
   $('#listHint').textContent = `총 ${rows.length}건${rows.length > 10 ? ' — 10건씩 표시되며, 나머지는 스크롤하여 확인하세요.' : ''} 클릭: 상세 정보 / 더블클릭: 도면 위치 보기`;
   bindRows(tbody);
@@ -827,10 +1054,7 @@ function bindRows(tbody) {
   tbody.querySelectorAll('tr[data-id]').forEach((tr) => {
     const { type, id } = tr.dataset;
     tr.addEventListener('click', () => select({ type, id }));
-    tr.addEventListener('dblclick', () => {
-      const item = type === 'node' ? nodeById(id) : type === 'line' ? lineById(id) : type === 'legend' ? legendById(id) : issueById(id);
-      if (item) openViewer(viewTarget(item, type));
-    });
+    tr.addEventListener('dblclick', () => openItem(type, id));
   });
 }
 
@@ -1085,9 +1309,29 @@ function exportData(kind) {
         .concat(lineRows().map((l) => [l.line_no, l.service, nodeName(l.from_id), nodeName(l.to_id), KIND_LABEL[l.kind], specSummary(l), drawingLabel(l.loc), l.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
     } else rows = [['Line No.', '관경', '유체', '유체 설명', 'Spec/Class', 'Class 설명(범례)', '보온', 'Service', 'From', 'To', '구분', '설치 계기·밸브', '도면', '검토 항목']]
       .concat(lineRows().map((l) => [l.line_no, l.size, l.fluid_code, l.fluid_desc, l.spec_class, l.class_desc, l.insulation, l.service, nodeName(l.from_id), nodeName(l.to_id), KIND_LABEL[l.kind], l.inline_items.join(' '), drawingLabel(l.loc), l.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
+    // 물질수지 스트림과 Flow에 표시 중인 값
+    const opt = currentOption();
+    if (r.mass_balance || opt) {
+      const ls = lineRows();
+      rows = rows.map((row, i) => (i === 0
+        ? [...row, '물질수지 스트림', ...(opt ? [optLabel(opt)] : [])]
+        : [...row, state.lineStream.get(ls[i - 1].id)?.id || '', ...(opt ? [valueOf(ls[i - 1], opt.key)?.value ?? ''] : [])]));
+    }
   } else if (kind === 'instruments') {
     rows = [['Tag', '명칭', '구분', '형식', '설치 위치', '도면', '검토 항목']]
       .concat(instrumentRows().map((n) => [n.tag, n.name, CATEGORY_LABEL[n.category], n.equipment_type, installedOn(n), drawingLabel(n.loc), n.issue_ids.map((id) => issueById(id)?.title).join(' / ')]));
+  } else if (kind === 'massbalance') {
+    const mbx = r.mass_balance;
+    if (!mbx) {
+      toast('입력한 물질수지가 없습니다. 물질수지 입력 버튼으로 먼저 넣어 주세요.', true);
+      return;
+    }
+    rows = [['Stream', 'Description', 'From', 'To', 'Line No.', '도면 매칭 라인', '매칭 방법', ...mbx.properties.map(optLabel)]]
+      .concat(mbx.streams.map((st) => {
+        const ms = mbx.matches.filter((m) => m.stream_id === st.id);
+        return [st.id, st.description, st.from, st.to, st.line_no, ms.map((m) => lineById(m.line_id)?.line_no || m.line_id).join(' / '),
+          [...new Set(ms.map((m) => matchMethodLabel(m.method)))].join(' / '), ...mbx.properties.map((p) => st.values[p.key] ?? '')];
+      }));
   } else if (kind === 'legend') {
     rows = [['구분', '코드', '설명', '적용 건수']].concat(legendRows().map((e) => [e.section, e.code, e.description, e.used ?? '']));
   } else {
