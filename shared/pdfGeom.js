@@ -438,3 +438,20 @@ export function traceDistance(trace, p) {
   }
   return d;
 }
+
+/**
+ * 도면 범례(SYMBOLS)의 "MAIN FLOW" 견본 선과 같은 굵기·색으로 그려진 선 = 주 흐름(Main Stream).
+ * label: 범례 글자의 위치 {x, y, h} (정규화, y는 글자 기준선). 견본을 못 찾으면 [] (짐작하지 않는다)
+ */
+export function mainFlowSegments(geom, label) {
+  if (!geom?.segs.length || !label) return [];
+  const yMid = label.y - label.h / 2;
+  const sample = geom.segs
+    .filter((s) => !s.shape && Math.abs(s.a[1] - s.b[1]) < 1e-6 && Math.abs(s.a[1] - yMid) < 0.008
+      && Math.max(s.a[0], s.b[0]) <= label.x + 0.002 && Math.max(s.a[0], s.b[0]) > label.x - 0.08)
+    .sort((a, b) => segLen(b) - segLen(a))[0];
+  if (!sample) return [];
+  const w = sample.w ?? 1;
+  return geom.segs.filter((s) => !s.shape && !s.dashed && Math.abs((s.w ?? 1) - w) <= Math.max(0.05 * w, 1e-6) && (s.color ?? '') === (sample.color ?? ''))
+    .map((s) => [s.a[0], s.a[1], s.b[0], s.b[1]]);
+}

@@ -6,7 +6,7 @@
 //      pdfjs: {OPS, Util}, selectFree({trace, ends, key})}
 // 선택한 라인(설비면 연결된 라인들)은 도면의 실제 선과 화살촉을 따라가 붉게 칠한다 (shared/pdfGeom.js)
 
-import { extractGeometry, traceLine, traceDistance, nearestSegment, traceFromSegment } from './shared/pdfGeom.js';
+import { extractGeometry, traceLine, traceDistance, nearestSegment, traceFromSegment, mainFlowSegments } from './shared/pdfGeom.js';
 
 export const FREE_ID = '__free__'; // Stream 번호 없이 도면에서 직접 고른 선
 
@@ -14,8 +14,9 @@ const MIN_Z = 0.5, MAX_Z = 16;
 const MAX_CANVAS_PX = 8192;
 
 export function createPidView(container, ui) {
-  container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><svg class="pv-flow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
+  container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><svg class="pv-main" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><svg class="pv-flow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
   const flowSvg = container.querySelector('.pv-flow');
+  const mainSvg = container.querySelector('.pv-main');
   const geoms = new Map(); // 도면별 선 데이터 (Promise)
   const traces = new Map(); // 라인 id → 추적한 경로
   const stage = container.querySelector('.pv-stage');
@@ -268,6 +269,22 @@ export function createPidView(container, ui) {
   };
   let readyGeom = null; // {key, geom}
 
+  /** 주 흐름(Main Stream): 범례의 MAIN FLOW 견본과 같은 굵기·색의 선을 주황색으로 깔아 둔다 */
+  async function drawMain(page, geom, key) {
+    let label = null;
+    try {
+      const vp = page.getViewport({ scale: 1 });
+      const it = (await page.getTextContent()).items.find((x) => /MAIN\s+FLOW/i.test(x.str) && !/SECONDARY|EVENTUAL/i.test(x.str));
+      if (it) {
+        const m = ui.pdfjs.Util.transform(vp.transform, it.transform);
+        label = { x: m[4] / vp.width, y: m[5] / vp.height, h: Math.hypot(m[2], m[3]) / vp.height };
+      }
+    } catch { /* 글자 정보 없음 */ }
+    if (v.key !== key) return;
+    const segs = mainFlowSegments(geom, label);
+    mainSvg.innerHTML = segs.length ? `<path d="${segs.map((s) => `M${s[0]} ${s[1]}L${s[2]} ${s[3]}`).join('')}"/>` : '';
+  }
+
   /** 이 도면 라인들의 경로를 화면을 멈추지 않게 하나씩 미리 계산 (선 클릭·마우스 올림용) */
   function warm() {
     const rg = readyGeom;
@@ -362,7 +379,8 @@ export function createPidView(container, ui) {
         v.page = page;
         if (!geoms.has(key)) geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
         readyGeom = null;
-        geoms.get(key).then((geom) => { if (geom && v.key === key) { readyGeom = { key, geom }; warm(); } });
+        mainSvg.innerHTML = '';
+        geoms.get(key).then((geom) => { if (geom && v.key === key) { readyGeom = { key, geom }; warm(); drawMain(page, geom, key); } });
         const vp = page.getViewport({ scale: 1 });
         v.pw = vp.width;
         v.ph = vp.height;

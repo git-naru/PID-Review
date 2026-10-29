@@ -167,6 +167,8 @@ button { font: inherit; }
 .pv-marks { position: absolute; inset: 0; }
 /* 선택한 라인의 도면상 경로(선·화살촉)를 붉게 */
 .pv-flow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pv-main { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; opacity: .2; } /* Main Stream: 주황, 투명도 80% */
+.pv-main path { fill: none; stroke: #f97316; stroke-width: 6px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .pv-flow { opacity: .3; } /* 투명도 70%: 원래 선·글씨가 비쳐 보이도록 (겹치는 부분이 진해지지 않게 묶음 단위로) */
 .pv-flow .route { fill: none; stroke: #e11d2e; stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .pv-flow .route.dash { stroke-dasharray: 8 5; stroke-linecap: butt; }
@@ -207,6 +209,7 @@ button { font: inherit; }
 .lg.ut { border: 0; border-top: 2px dashed var(--utility); height: 0; width: 18px; border-radius: 0; }
 .lg.bad { border-color: var(--high); }
 .lg.lnbox { border-color: #475569; border-width: 1.5px; border-radius: 999px; width: 22px; }
+.lg.mainst { border: 0; height: 0; width: 18px; border-radius: 0; border-top: 6px solid rgba(249, 115, 22, .35); }
 .lg.est { border-color: var(--muted); border-style: dashed; }
 .lg.thick { border: 0; height: 0; width: 18px; border-radius: 0; border-top: 5px solid var(--line); }
 
