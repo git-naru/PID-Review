@@ -852,7 +852,20 @@ function highlightInFlow(ids, focus) {
  * 기본 보기에서 Stream 번호 없는 선을 직접 고름: 경로 양 끝의 설비로 From/To를 짐작하고,
  * 분석 결과에서 같은 설비를 잇는 라인을 찾아 보여 준다
  */
+function clearSelection() {
+  state.selected = null;
+  highlightInFlow([], false);
+  renderDetail();
+  markSelectedRows();
+}
+
 function selectFree({ trace, ends, key }) {
+  // 같은 선을 다시 누르면 선택 취소
+  const sig = `${key}|${trace.segs.length}|${trace.segs[0]?.join(',')}`;
+  if (state.selected?.type === 'free' && state.free?.sig === sig) {
+    clearSelection();
+    return;
+  }
   const [fi, page] = key.split(':').map(Number);
   const here = state.result.nodes.filter((n) => n.loc?.bbox && n.loc.file_index === fi && n.loc.page === page && n.category !== 'instrument' && n.category !== 'valve');
   const boxDist = (p, b) => Math.hypot(Math.max(b[0] - p[0], 0, p[0] - b[2]), Math.max(b[1] - p[1], 0, p[1] - b[3]));
@@ -870,7 +883,7 @@ function selectFree({ trace, ends, key }) {
     .concat(lineRows().filter((l) => (ids.has(l.from_id) || ids.has(l.to_id)) && !(ids.has(l.from_id) && ids.has(l.to_id))).slice(0, 6));
   const xs = trace.segs.flatMap((s) => [s[0], s[2]]), ys = trace.segs.flatMap((s) => [s[1], s[3]]);
   state.free = {
-    from, to, candidates, arrows: trace.arrows.length,
+    sig, from, to, candidates, arrows: trace.arrows.length,
     loc: { file_index: fi, page, bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], source: 'text' },
   };
   state.selected = { type: 'free', id: FREE_ID };
@@ -905,6 +918,11 @@ function selectedIds(sel) {
 }
 
 function select(sel, from) {
+  // Flow나 리스트에서 이미 선택한 항목을 다시 누르면 선택 취소
+  if ((from === 'flow' || from === 'list') && state.selected?.type === sel.type && state.selected?.id === sel.id) {
+    clearSelection();
+    return;
+  }
   state.selected = sel;
   let ids = [sel.id];
   if (sel.type === 'issue') ids = issueById(sel.id)?.related_ids || [];
@@ -1382,7 +1400,7 @@ function renderIssues() {
 function bindRows(tbody) {
   tbody.querySelectorAll('tr[data-id]').forEach((tr) => {
     const { type, id } = tr.dataset;
-    tr.addEventListener('click', () => select({ type, id }));
+    tr.addEventListener('click', () => select({ type, id }, 'list'));
     tr.addEventListener('dblclick', () => openItem(type, id));
   });
 }
