@@ -50,6 +50,14 @@ PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설�
 
 필요한 capability는 `assets`, `db`, `user`, `downloads`입니다. 도면이 저장되므로 페이지 공유 범위에 주의하세요.
 
+### 분석 결과를 HTML 파일 하나로 받기 (보기 전용)
+
+```bash
+npm run build:standalone -- <result.json> <PDF 폴더> <저장할 파일.html>
+```
+
+분석 결과와 도면 PDF를 모두 넣은 HTML 파일 하나를 만듭니다. 인터넷이나 서버 없이 PC에서 열어도 Flow, 리스트, 검토 항목, 도면 위치 보기, CSV 저장이 지금 화면과 똑같이 동작합니다. 업로드와 분석 기능은 빠지고, 도면이 파일 안에 들어 있으니 공유할 때 주의하세요.
+
 ### 3. 로컬 서버 (Anthropic API 키 사용)
 
 
@@ -101,7 +109,7 @@ server/   index.js(API·정적 파일) · analyzer.js(Claude API 호출) · pdfT
 shared/   pidText.js(텍스트/좌표) · postprocess.js(검증) · prompts.js(판독 지침) — 서버·브라우저 공용
 public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아티팩트용 브라우저 분석) · styles.css
 public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시)
-scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat)
+scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat) · build-standalone.mjs(보기 전용 단일 HTML)
 scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs (채팅 세션 분석, Python + pypdfium2 필요)
 shared/   merge.js(시트별 결과 병합)
 samples/  샘플 범례 1장 + P&ID 2장(의도적 결함 포함) · demo-analysis.json

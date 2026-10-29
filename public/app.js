@@ -7,7 +7,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', 
 // 실행 환경: 로컬 서버(Node, API 키 사용) 또는 claude.ai 아티팩트(사용자 계정의 Claude 사용)
 const IN_ARTIFACT = Boolean(window.claude);
 // 아티팩트는 두 가지: 페이지에서 바로 분석(sample) / 도면만 올리고 Claude Code 채팅에서 분석(chat)
-const MODE = !IN_ARTIFACT ? 'server' : document.querySelector('meta[name="pid-mode"]')?.content === 'chat' ? 'chat' : 'sample';
+// 단일 HTML 파일(보기 전용): 분석 결과와 도면이 파일 안에 들어 있다
+const STATIC_DATA = document.getElementById('pid-static');
+const MODE = STATIC_DATA ? 'static'
+  : !IN_ARTIFACT ? 'server'
+    : document.querySelector('meta[name="pid-mode"]')?.content === 'chat' ? 'chat' : 'sample';
 const runtime = { sample: null, downloads: null, abort: null, chat: null };
 let runAction = () => analyzeWithAccount(true);
 
@@ -41,6 +45,7 @@ async function init() {
   $('#btnResume').addEventListener('click', () => runAction());
   $('#tierSelect').hidden = MODE !== 'sample';
   const n = $('#apiNotice');
+  if (MODE === 'static') return initStatic(n);
   if (MODE === 'chat') {
     $('#btnPick').textContent = '도면 올리기';
     $('#btnAnalyze').textContent = '분석 요청';
@@ -72,6 +77,24 @@ async function init() {
       n.textContent = '서버에 ANTHROPIC_API_KEY가 설정되지 않아 실제 도면 분석은 할 수 없습니다. "샘플 데모"로 기능을 먼저 확인하거나, 키를 설정한 뒤 서버를 다시 시작하세요.';
     }
   } catch { /* 서버 상태 확인 실패 시 무시 */ }
+}
+
+/** 보기 전용 HTML: 들어 있는 결과와 도면을 바로 표시 */
+function initStatic(notice) {
+  ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect'].forEach((s) => { $(s).hidden = true; });
+  $('#fileBar').hidden = true;
+  const data = JSON.parse(STATIC_DATA.textContent);
+  const toBuffer = (b64) => {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  };
+  const when = data.result.meta?.analyzedAt ? new Date(data.result.meta.analyzedAt).toLocaleString('ko-KR') : '';
+  notice.hidden = false;
+  notice.className = 'notice info';
+  notice.textContent = `보기 전용 파일입니다${when ? ` (분석 ${when})` : ''}. 도면 ${data.result.files.length}개와 분석 결과가 이 파일 안에 들어 있어 인터넷 없이 열 수 있습니다. 새 도면을 분석하려면 원래 페이지를 이용하세요.`;
+  applyResult(data.result, data.pdfs.map(toBuffer));
 }
 
 // ------------------------------------------------------------------ 업로드
@@ -425,7 +448,11 @@ function renderFlow() {
 }
 
 function nodeLabel(n) {
-  if (n.category === 'equipment') return `${n.tag || n.id}\n${n.name}`;
+  if (n.category === 'equipment') {
+    // 태그 없는 설비(PFD)는 id가 이름과 같으므로 한 번만 표시
+    const head = n.tag || (n.id !== n.name ? n.id : '');
+    return head && n.name ? `${head}\n${n.name}` : head || n.name;
+  }
   if (n.category === 'offpage') return /\b(TO|FROM)\b/i.test(n.name) ? n.name : n.offpage_ref ? `↔ ${n.offpage_ref}` : n.name || n.tag;
   if (n.category === 'battery_limit') return n.tag || n.name || n.offpage_ref;
   return n.tag || n.name || n.id;
