@@ -532,6 +532,7 @@ function bindFlowToolbar() {
     },
     goPage: (key) => { $('#drawingFilter').value = key; },
     nav: flowNav,
+    pdfjs: pdfjsLib,
   });
   document.querySelectorAll('#flowMode [data-mode]').forEach((b) => b.addEventListener('click', () => setFlowMode(b.dataset.mode)));
   markFlowMode();
@@ -822,8 +823,9 @@ function flowStyle() {
       'line-opacity': 0, 'target-arrow-shape': 'none', 'text-border-width': 0, 'text-background-shape': 'rectangle',
       'text-background-opacity': 0.85, 'text-background-padding': 1, 'text-margin-y': 15, 'font-size': 8.5,
     } },
-    { selector: ':selected', style: { 'overlay-color': primary, 'overlay-opacity': 0.2, 'overlay-padding': 6 } },
-    { selector: 'edge:selected', style: { width: 4 } },
+    // 선택한 항목만 붉은색으로
+    { selector: 'node:selected', style: { 'border-color': high, 'border-width': 4, 'overlay-color': high, 'overlay-opacity': 0.12, 'overlay-padding': 6 } },
+    { selector: 'edge:selected', style: { 'line-color': high, 'target-arrow-color': high, color: high, 'text-border-color': high, width: 4, 'line-style': 'solid', 'z-index': 10 } },
   ];
 }
 

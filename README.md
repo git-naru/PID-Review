@@ -9,6 +9,9 @@ PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설�
     - Line No.는 둥근 테두리로 감싸고, 유량은 그 아래에 표시합니다.
     - 검토가 필요한 항목은 빨간 테두리, AI가 추정한 위치는 점선입니다.
     - 휠로 확대·축소하고 드래그로 이동합니다. Off-page를 더블클릭하면 연결 도면으로 넘어갑니다.
+    - Line No.를 고르면 도면의 실제 선 경로와 화살촉이 **붉게** 칠해집니다. 설비를 고르면 그 설비에 연결된 라인들이 칠해집니다.
+      - 원리: PDF의 선(벡터)을 읽어, Line No. 옆을 지나는 선에서 시작해 갈림길·설비 외곽선이 나올 때까지 따라갑니다(`shared/pdfGeom.js`).
+      - 스캔 도면, 점선 등 끊어진 선, Line No.가 선에서 멀리 떨어진 경우에는 칠해지지 않거나 일부만 칠해질 수 있습니다.
     - 설비나 Line No.를 고르면 아래에 **◀ From / To ▶** 버튼이 생깁니다. 누르면 앞뒤 설비·라인으로 이동해 흐름을 따라갈 수 있습니다.
       - Off-page에서는 연결 도면의 짝으로 넘어갑니다.
       - 도면에 위치가 없는 번호 없는 분기선은 건너뛰고 반대편 설비로 갑니다.
@@ -169,6 +172,6 @@ public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아�
 public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시) · pidview.js(Flow 기본 보기: 원본 도면 + 클릭 영역)
 scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat) · build-standalone.mjs(보기 전용 단일 HTML)
 scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs (채팅 세션 분석, Python + pypdfium2 필요)
-shared/   merge.js(시트별 결과 병합) · massbalance.js(물질수지 읽기·매칭)
+shared/   merge.js(시트별 결과 병합) · massbalance.js(물질수지 읽기·매칭) · pdfGeom.js(도면 선 추출·경로 추적)
 samples/  샘플 범례 1장 + P&ID 2장(의도적 결함 포함) · demo-analysis.json · PID-100-MB.xlsx/.csv(샘플 물질수지)
 ```

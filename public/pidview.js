@@ -2,13 +2,20 @@
 // 위치는 분석 결과의 bbox(텍스트 레이어에서 찾은 위치, 없으면 AI 추정 위치)를 쓴다. 도면은 한 번에 한 장.
 //
 // ui: {getPdf(fileIndex) → Promise<PDFDocumentProxy>, select(sel, from), open(type, id), valueText(line) → string,
-//      linkTarget(nodeId) → node | null, goPage(key), nav() → {anchor, prev: [{label, sel}], next: [...]} | null}
+//      linkTarget(nodeId) → node | null, goPage(key), nav() → {anchor, prev: [{label, sel}], next: [...]} | null,
+//      pdfjs: {OPS, Util}}
+// 선택한 라인(설비면 연결된 라인들)은 도면의 실제 선과 화살촉을 따라가 붉게 칠한다 (shared/pdfGeom.js)
+
+import { extractGeometry, traceLine } from './shared/pdfGeom.js';
 
 const MIN_Z = 0.5, MAX_Z = 16;
 const MAX_CANVAS_PX = 8192;
 
 export function createPidView(container, ui) {
-  container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
+  container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><svg class="pv-flow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
+  const flowSvg = container.querySelector('.pv-flow');
+  const geoms = new Map(); // 도면별 선 데이터 (Promise)
+  const traces = new Map(); // 라인 id → 추적한 경로
   const stage = container.querySelector('.pv-stage');
   const canvas = container.querySelector('.pv-canvas');
   const marks = container.querySelector('.pv-marks');
@@ -198,11 +205,12 @@ export function createPidView(container, ui) {
         const b = l.loc.bbox;
         html.push(`<div class="${cls.join(' ')}" data-type="line" data-id="${esc(l.id)}" title="${esc(l.line_no || l.id)}" style="${box(b, 0.0025)}"></div>`);
         const val = ui.valueText(l);
-        if (val) html.push(`<div class="pv-val" data-type="line" data-id="${esc(l.id)}" style="left:${pct(b[0])};top:${pct(b[3] + 0.003)}">${esc(val)}</div>`);
+        if (val) html.push(`<div class="pv-val${selected.has(l.id) ? ' sel' : ''}" data-type="line" data-id="${esc(l.id)}" style="left:${pct(b[0])};top:${pct(b[3] + 0.003)}">${esc(val)}</div>`);
       }
     }
     marks.innerHTML = html.join('');
     renderNav();
+    drawFlow();
     msg.hidden = !!html.length || !v.page;
     msg.textContent = '이 도면에는 위치 정보가 있는 설비·라인이 없습니다. 자동배치 보기를 이용하세요.';
   }
@@ -225,6 +233,31 @@ export function createPidView(container, ui) {
     marks.append(el);
   }
 
+  /** 선택한 라인의 도면상 경로를 붉게: 설비를 고르면 그 설비에 연결된 라인들 */
+  async function drawFlow() {
+    const key = v.key;
+    flowSvg.innerHTML = '';
+    if (!v.result || !key || !selected.size) return;
+    const on = (x) => x.loc?.bbox && `${x.loc.file_index}:${x.loc.page}` === key;
+    const lines = new Map();
+    for (const l of v.result.lines) {
+      if (l.kind === 'signal' || !on(l)) continue;
+      if (selected.has(l.id) || selected.has(l.from_id) || selected.has(l.to_id)) lines.set(l.id, l);
+    }
+    if (!lines.size) return;
+    const geom = await geoms.get(key);
+    if (!geom || key !== v.key) return;
+    const parts = [];
+    for (const l of [...lines.values()].slice(0, 12)) {
+      if (!traces.has(l.id)) traces.set(l.id, traceLine(geom, l.loc.bbox));
+      const t = traces.get(l.id);
+      if (!t) continue;
+      parts.push(`<path class="route" d="${t.segs.map((s) => `M${s[0]} ${s[1]}L${s[2]} ${s[3]}`).join('')}"/>`);
+      for (const a of t.arrows) parts.push(`<polygon class="arrow" points="${a.map((p) => `${p[0]},${p[1]}`).join(' ')}"/>`);
+    }
+    flowSvg.innerHTML = parts.join('');
+  }
+
   async function setPage(key) {
     if (!v.result || !key || key === 'all') return;
     if (key !== v.key) {
@@ -240,6 +273,7 @@ export function createPidView(container, ui) {
         const page = await doc.getPage(p);
         if (v.key !== key) return;
         v.page = page;
+        if (!geoms.has(key)) geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
         const vp = page.getViewport({ scale: 1 });
         v.pw = vp.width;
         v.ph = vp.height;
@@ -265,8 +299,9 @@ export function createPidView(container, ui) {
       return;
     }
     // 클릭 직후 표시 항목을 다시 만들면 더블클릭이 끊기므로 선택 표시만 바꾼다
-    marks.querySelectorAll('.pv-mark').forEach((m) => m.classList.toggle('sel', selected.has(m.dataset.id)));
+    marks.querySelectorAll('.pv-mark, .pv-val').forEach((m) => m.classList.toggle('sel', selected.has(m.dataset.id)));
     renderNav();
+    drawFlow();
     if (focus && here.length) centerOn(here[0].loc.bbox);
   }
 
@@ -274,7 +309,8 @@ export function createPidView(container, ui) {
     /** reload: 원본 PDF가 바뀌었을 때(새 분석) 도면을 다시 연다 */
     show(result, key, reload = false) {
       v.result = result;
-      if (reload) { v.key = null; views.clear(); }
+      traces.clear();
+      if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); }
       return setPage(key);
     },
     setPage,

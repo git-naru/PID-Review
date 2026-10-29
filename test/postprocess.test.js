@@ -146,3 +146,23 @@ test('시트별 판독에서 겹치는 id는 시트 안의 연결을 유지한 �
   assert.deepEqual(raw.issues[1].related_ids, ['PUMP-1@PFD-00002', 'LINE-1@PFD-00002']);
   assert.deepEqual(raw.lines[1].inline_items, ['PUMP-1@PFD-00002']);
 });
+
+test('도면 선 추적: Line No.에서 시작해 그 라인의 경로만 따라간다', async () => {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { extractGeometry, traceLine } = await import('../shared/pdfGeom.js');
+  const task = pdfjs.getDocument({ data: new Uint8Array(await fs.readFile(path.join(SAMPLES, 'PID-100-001.pdf'))) });
+  try {
+    const g = await extractGeometry(await (await task.promise).getPage(1), pdfjs.OPS, pdfjs.Util);
+    const { files } = await loadSamples();
+    // 6"-P-1001-A1A: TK-101 아래에서 P-101A까지 꺾인 경로 (선분 2개)
+    const label = findTagOnPages('6"-P-1001-A1A', files[1].text.pages, 1);
+    const t = traceLine(g, label.bbox);
+    assert.equal(t.segs.length, 2);
+    const ys = t.segs.flatMap((s) => [s[1], s[3]]);
+    assert.ok(ys.every((y) => y > 0.55 && y < 0.66), `경로 ${JSON.stringify(t.segs)}`);
+    // 4"-P-1004: E-101 → V-101, 계단 모양 선분 3개
+    assert.equal(traceLine(g, findTagOnPages('4"-P-1004', files[1].text.pages, 1).bbox).segs.length, 3);
+  } finally {
+    task.destroy();
+  }
+});

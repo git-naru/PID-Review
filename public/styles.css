@@ -165,14 +165,20 @@ button { font: inherit; }
 .pv-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; --z: 1; box-shadow: 0 2px 12px var(--shadow); }
 .pv-canvas { position: absolute; left: 0; top: 0; background: #fff; }
 .pv-marks { position: absolute; inset: 0; }
+/* 선택한 라인의 도면상 경로(선·화살촉)를 붉게 */
+.pv-flow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pv-flow .route { fill: none; stroke: #e11d2e; stroke-width: 3.5px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .9; }
+.pv-flow .arrow { fill: #e11d2e; stroke: #e11d2e; stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .pv-mark { position: absolute; cursor: pointer; border: calc(1.5px / var(--z)) solid transparent; border-radius: calc(3px / var(--z)); }
-.pv-mark.node:hover, .pv-mark.node.sel { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.pv-mark.node:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
 .pv-mark.node.instrument, .pv-mark.node.valve { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .pv-mark.line { border-color: #475569; border-radius: 999px; background: color-mix(in srgb, #fff 30%, transparent); }
 .pv-mark.line.utility { border-color: #2563eb; }
 .pv-mark.flag { border-color: var(--high); }
 .pv-mark.model { border-style: dashed; }
-.pv-mark.sel { border-color: var(--primary); border-width: calc(3px / var(--z)); background: color-mix(in srgb, var(--primary) 18%, transparent); }
+/* 선택한 항목만 붉은색 */
+.pv-mark.sel { border-color: var(--high); border-style: solid; border-width: calc(3px / var(--z)); background: color-mix(in srgb, var(--high) 22%, transparent);
+  box-shadow: 0 0 0 calc(4px / var(--z)) color-mix(in srgb, var(--high) 25%, transparent); }
 .pv-mark:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
 .pv-val { position: absolute; font-size: calc(11px / var(--z)); line-height: 1.2; padding: 0 calc(3px / var(--z)); color: #0f3d91; background: rgba(255, 255, 255, .85);
   font-weight: 700; white-space: nowrap; cursor: pointer; font-variant-numeric: tabular-nums; }
@@ -182,6 +188,7 @@ button { font: inherit; }
   font-size: 11.5px; font-weight: 600; white-space: nowrap; cursor: pointer; box-shadow: 0 2px 6px var(--shadow); }
 .pv-nav button.next { background: var(--primary); color: var(--on-primary); }
 .pv-nav button:hover { filter: brightness(1.08); }
+.pv-val.sel { color: #fff; background: var(--high); border-radius: calc(3px / var(--z)); }
 .pv-msg { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--glass); border: 1px solid var(--border); border-radius: 8px;
   padding: 6px 12px; font-size: 12.5px; max-width: calc(100% - 24px); text-align: center; }
 .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; }
