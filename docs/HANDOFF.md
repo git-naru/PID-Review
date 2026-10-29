@@ -1,122 +1,148 @@
 # 인수인계: P&ID/PFD 분석 도구 (투자비 산출 입력용)
 
-최종 갱신: 2026-10-29 (물질수지 연동 추가)
+최종 갱신: 2026-10-30
 
 ## 1. 목적
-엔지니어링 산출물인 P&ID(및 PFD) PDF를 분석해 투자비(CAPEX) 산출의 입력 조건을 만드는 도구.
-- PDF 한 장 또는 여러 장을 입력하면 Claude가 도면을 판독한다.
-- 공정 Flow를 그리고, 설비·라인을 클릭하면 상세 정보를 보여준다.
-- 설비 리스트를 10행 표시 후 스크롤로 보여준다. 배관(스트림)·계기·범례 리스트도 있다.
-- 연결되지 않았거나 부정확한 정보를 "검토 필요 항목"으로 따로 모으고, 더블클릭하면 원본 도면의 해당 위치를 확대해 보여준다.
+엔지니어링 산출물인 P&ID·PFD PDF를 분석해 투자비(CAPEX) 산출의 입력 조건을 만드는 도구다.
+- **도면 판독**: PDF 한 장 또는 여러 장을 넣으면 Claude가 판독한다. 공정 Flow, 설비·배관(스트림)·계기·범례 리스트(10행 표시 후 스크롤), 검토 필요 항목을 보여 준다.
+- **원본 위치 확인**: 리스트나 검토 항목을 더블클릭하면 원본 도면의 해당 위치를 확대해 보여 준다.
+- **물질수지 연동**: 물질수지(Mass Balance)를 넣으면 도면 스트림과 매칭해 유량, Li 농도(g/L) 등을 보여 준다.
 
 ## 2. 결정된 사항
-- **기술 스택**
-  - Node.js(Express) 서버와 빌드 단계 없는 vanilla JS 프런트엔드
-  - Cytoscape(+dagre)로 Flow, pdf.js로 도면 표시
-  - 분석 모델은 `claude-opus-5-5`
-- **범례(Legend) 우선 판독**: 범례 시트에서 라인 번호 체계, 유체 코드, 배관 Class, 설비/계기 식별 문자, 기호를 먼저 읽고 나머지 시트에 적용한다.
-  - 범례 예시 태그는 실제 항목으로 추출하지 않고, 위치 검색에서도 범례 페이지를 제외한다.
-  - 범례에 없는 Class·유체 코드 등은 검토 항목으로 올린다.
-- **PFD 지원**: 문서 종류가 PFD면 라인 번호·관경·Spec 검사 대신 스트림 번호와 물질수지표 값(라인 `specs`)을 쓴다.
-- **실행 방식은 세 가지이고, 사용자는 ②채팅 분석 방식을 선택했다.**
-  1. **페이지에서 바로 분석** (아티팩트 `sample` 기능)
-     - API 키 없이 사용자 계정 사용량으로 분석한다.
-     - 탭을 계속 열어 둬야 하고, 실제 Claude로는 끝까지 검증하지 못했다.
-  2. **채팅 분석 (현재 주력)**
-     - 페이지는 도면 업로드와 결과 보기만 한다. 분석은 Claude Code 채팅 세션이 하고, 결과를 다시 페이지에 넣는다.
-     - 도면이 저장되므로 페이지는 **본인만 열람**하도록 새로 만들었다.
-  3. **로컬 서버** (`npm start`, Anthropic API 키 필요)
-     - 실제 키로는 실행해 본 적이 없다.
-- **결과 공유**: 분석 결과를 화면 그대로 동작하는 **단일 HTML 파일**(보기 전용, 오프라인)로도 만든다.
-- **물질수지(Mass Balance) 연동**: **물질수지 입력** 버튼으로 H&MB 표(xlsx/csv/텍스트 PDF)를 넣으면 브라우저에서 읽어 도면 라인과 매칭한다(`shared/massbalance.js`, Claude 호출 없음).
-  - 매칭 순서: 스트림 번호 → Line No. 행 → From/To 설비 태그
-  - Flow 라인에 선택한 값(기본: 정상 질량 유량)을 붙이고, 선 굵기로도 보여 준다.
-  - PFD는 스트림 번호로 대부분 매칭된다. P&ID는 물질수지에 Line No.나 From/To 행이 있어야 매칭된다.
-  - 엑셀 라이브러리 없이 zip/XML을 직접 읽는다. 외부 의존성과 보안 취약점을 피하기 위해서다. .xls와 DRM 파일은 읽지 못한다.
+### 실행 방식
+사용자가 주로 쓰는 방식은 **채팅 분석**이다.
+1. **채팅 분석 (주력)**: https://claude.ai/artifact/BjLxfaLP3jJLLJ3mk1TbND (비공개)
+   - 페이지는 도면 업로드와 결과 보기만 한다.
+   - 사용자가 채팅에 "분석 요청했어"라고 하면 Claude Code 세션이 분석해 결과를 페이지에 넣는다. 절차는 4장에 있다.
+2. **페이지에서 바로 분석**: https://claude.ai/artifact/4x6tjroj1SAKnMPnw9Ga2f ("링크가 있는 누구나" 공유 상태)
+   - 사용자 계정의 Claude로 분석한다. 실제 대량 분석은 미검증이다.
+3. **로컬 서버**: `npm start`, API 키가 필요하다. 사용자가 비용 때문에 쓰지 않고 있다.
+4. **결과 공유**: 보기 전용 단일 HTML(오프라인).
+   - `scripts/build-standalone.mjs`로 만든다.
+   - 화면 기능은 페이지와 같고, 물질수지 입력도 된다.
+
+### 판독
+- 범례(Legend) 시트를 먼저 읽고 나머지 시트에 적용한다.
+- PFD는 스트림 번호와 물질수지표 값을 쓴다(`doc_type: 'pfd'`).
+- 시트별 결과를 합칠 때 겹치는 id는 도면 번호를 붙여 구분한다.
+
+### 물질수지 (`shared/massbalance.js`, Claude 호출 없이 브라우저에서 처리)
+- **읽는 형식**
+  - xlsx·csv·텍스트 PDF를 읽는다. 라이브러리 없이 zip/XML을 직접 읽으며, .xls와 DRM 파일은 읽지 못한다.
+  - 여러 시트를 합친다. "NOMINAL/DESIGN FLOW" 제목 행은 항목 이름 앞에 붙인다. "Unit" 행에 적힌 설명도 처리한다.
+- **매칭 순서**: 스트림 번호 → Line No. 행 → From/To 설비.
+- **검토 항목**: 값 불일치, 물질수지에 없는 스트림, 도면에 없는 스트림.
+- **Li 농도(g/L)**
+  - 액상: Li+ % w/w × 밀도(t/m3) × 10
+  - 슬러리: 액상 분율을 곱해 스트림 1 L당으로 계산하고 `*` 표시를 붙인다.
+  - 고상 Li2CO3가 있으면 총 Li도 함께 낸다.
+- **보여 주는 곳**
+  - 상세 정보 맨 위
+  - 물질수지 탭의 Li 열
+  - Flow 표시 값 선택 목록
+- **물질수지 조회**
+  - Line No.·스트림 번호를 입력하고 Enter를 누르면 물질수지 표 창이 열린다.
+  - 쉼표로 여러 개를 넣으면 나란히 비교한다. 창 안에서도 다시 조회할 수 있다.
+  - 창에는 CSV 저장 버튼과 닫기 버튼이 있다.
+
+### 화면 규칙 (사용자 요청으로 정해진 것)
+- **Flow 보기 방식**: [기본 | 자동배치], 기본값은 **기본**이다(원본 PDF 도면 위에 표시).
+  - 도면마다 확대·이동 상태를 기억한다. 처음에는 폭맞춤으로 열린다.
+  - 도구 막대에 **폭맞춤**과 **화면 맞춤** 버튼이 있다.
+- **체크 항목**: 계기·밸브, 유틸리티, 연결목록, Main Stream 모두 **기본 꺼짐**.
+- **Line No. 표시**: Line No.에만 둥근 테두리를 두르고, 유량 등 표시 값은 테두리 없이 그 아래에 둔다.
+- **붉은색은 선택한 항목에만 쓴다.**
+  - 기본 보기에서는 검토 필요 항목을 붉게 표시하지 않는다. 자동배치는 기존대로 표시한다.
+  - 사용자가 "검토 필요"를 주황색으로 바꾸는 수정을 거절했다.
+- **선택한 Stream 경로 표시** (`shared/pdfGeom.js`): 도면의 실제 선과 화살촉을 붉게 칠하며, 투명도는 70%다.
+  - **Stream 규칙(사용자 정의)**
+    - Stream은 최소한 화살 머리까지 이어진다.
+    - 화살 머리에서 다시 이어지는 선이 있으면 같은 Stream이다.
+    - 교차는 끊김이 아니다.
+  - **구현**: 같은 색·선 모양인 선을 따라간다. 갈림길·합류는 포함하고, 교차하는 곳은 직진한다.
+    - 굵기만 다른 가지는 끝에 화살 머리가 있을 때만 포함한다.
+    - 다른 Stream의 Line No. 표식이나 설비 기호(닫힌 도형·곡선)에서 멈춘다.
+  - **점선**: 대시 조각으로 된 점선은 점선 그대로 칠한다.
+- **선택 방법**
+  - 도면의 선·화살표를 직접 클릭해도 선택된다. Stream 번호가 없는 선도 선택되며, 양 끝 설비로 From/To를 추정해 보여 준다.
+  - 이미 선택한 것을 다시 누르면 선택이 취소된다(Flow·리스트).
+- **연결목록 체크**: 선택 항목 아래에 ◀ From / To ▶ 이동 버튼을 띄운다. Off-page에서는 연결 도면으로 넘어간다.
+- **Main Stream 체크**: 범례(SYMBOLS)의 "MAIN FLOW" 견본 선과 굵기·색이 같은 선을 주황색(투명도 80%)으로 표시한다. 견본이 없는 도면에서는 표시하지 않는다.
+
+### 작업 관례
+- 페이지 코드를 고치면 `npm test`와 `npm run build:artifact`를 실행한다.
+- 그다음 **두 아티팩트를 같은 URL로 재게시**하고, POSCO 결과 HTML도 새로 만들어 사용자에게 보낸다.
+- UI 문구와 답변은 한국어로 쓴다.
 
 ## 3. 현재 진행 상황
 - **저장소**: `git-naru/PID-Review`
   - 작업 브랜치는 `claude/sharp-brown-2w1b2p`이다.
-  - PR #1, #2는 `main`에 머지됐다.
-  - **그 뒤 커밋들은 아직 `main`에 없다**(PR 미생성). 내용: 대량 시트 이어서 분석, 채팅 분석 모드, PFD 지원, 병합 버그 수정, 단일 HTML 내보내기, 물질수지 연동.
-  - 테스트 16개가 통과한다(`npm test`).
-- **아티팩트 페이지**
-  - 채팅 분석용 (비공개): https://claude.ai/artifact/BjLxfaLP3jJLLJ3mk1TbND
-  - 페이지에서 바로 분석용 ("링크가 있는 누구나" 공유 상태): https://claude.ai/artifact/4x6tjroj1SAKnMPnw9Ga2f
-- **첫 실제 분석 완료**: POSCO CP3 Option 1 탄산리튬 공정 개념 **PFD 8장**(`319020-00626-0000-PR-PFD-00001~00008`)
-  - 결과: 설비 125, 스트림 196, 검토 항목 80건(높음 5 / 중간 47 / 낮음 28)
-  - 높음 5건 예: Ca-Mg 반응기 수량 불일치(Note 4는 2기 이상 요구, 도면은 1기), 증발기 시스템 범위 불명확, 주요 설비 수량 미확정
-  - 결과는 채팅 분석 페이지에 들어 있다.
-    - db `jobs/current`: `status: done`, `resultAsset: 6deebc1e2942be9a27c3507769ccf644`
-    - 업로드한 PDF 8개는 페이지 assets에 남아 있다.
-  - 단일 HTML `POSCO_CP3_PFD_분석결과.html`(6.8MB)을 사용자에게 전달했다.
-- **분석 중 발견해 고친 버그**: 시트별 결과를 합칠 때 시트마다 겹치는 id(PUMP-1 등)가 다른 시트에 잘못 연결됐다.
-  - 이 때문에 "미연결 설비"와 "대응 Off-page 없음"이 대량으로 잘못 나왔다.
-  - `shared/merge.js`에서 도면 번호를 붙여 id를 구분하도록 고쳤다.
-- **샘플 도면 리허설**: 실제 Claude 판독으로 설비·배관을 정확히 읽었고, 의도한 결함 6가지를 모두 검출했다. 시트당 1~4분 걸린다.
-
-- **물질수지 기능 추가**(2026-10-29)
-  - 샘플 데모에 샘플 물질수지가 자동 적용된다.
-  - 실제 PFD 결과로 확인했다: 물질수지 47개 중 46개 매칭, 값 불일치 검출.
-  - 채팅 분석 페이지는 물질수지를 `massbalance/current`(db) + JSON asset으로 저장한다.
-- **실제 물질수지 반영**: `319020-00626-0000-PR-CAL-00001_B.xlsx`(도면별 8개 시트, 스트림 46개)
-  - POSCO PFD 결과에 반영했고, 46개 모두 스트림 번호로 매칭됐다.
-  - 새로 생긴 검토 항목은 2건이다. 스트림 1090의 % Moisture가 도면 100.0, 물질수지 0으로 다르다. 도면 스트림 1095는 물질수지에 없다.
-  - 채팅 분석 페이지 db `massbalance/current`에 asset `1f5619f35c2489f4c7a60e4dd21da30b`로 저장했다.
+  - PR #1, #2 이후 **커밋 약 30개가 `main`에 없다**(PR 미생성).
+  - 테스트 20개가 통과한다.
+- **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
+  - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
+  - 채팅 분석 페이지에 저장된 데이터
+    - db `jobs/current`: `status: done`, 결과 asset `6deebc1e2942be9a27c3507769ccf644`
+    - 원본 PDF 8개는 페이지 assets에 있다(asset id는 결과 JSON의 `files[].assetId`).
+- **실제 물질수지 반영**: `319020-00626-0000-PR-CAL-00001_B.xlsx`
+  - 46개 스트림 모두 매칭됐다.
+  - 페이지 db `massbalance/current`에 asset `1f5619f35c2489f4c7a60e4dd21da30b`로 저장돼 있어, 페이지를 열면 자동 적용된다.
+  - 새 검토 항목 2건
+    - 스트림 1090 % Moisture가 도면 100.0, 물질수지 0으로 다르다.
+    - 도면 스트림 1095는 물질수지에 없다.
+- **사용자에게 보낸 결과 HTML**: `POSCO_CP3_PFD_분석결과.html`(물질수지 포함, 최신 화면 기능)
+- **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
 
 ## 4. 채팅 분석 처리 절차
-사용자가 "분석 요청했어"라고 하면 아래 순서로 처리한다. 작업 폴더는 세션 scratchpad 아래 `jobN/`이다.
+사용자가 "분석 요청했어"라고 하면 아래 순서로 처리한다. 작업 폴더는 scratchpad 아래 `jobN/`이다.
 1. **요청 확인**: `ArtifactData`로 `jobs/current`를 읽는다. `files[]`에 assetId와 파일명이 있다.
-2. **진행 표시**: `jobs/current`를 `status: analyzing`과 `progress {done,total,stage}`로 업데이트한다. `if_version` 필수.
-3. **PDF 내려받기**: Artifact `action: read`로 `path: <assetId>` 하나씩 받는다(`paths` 일괄 읽기는 asset에 안 됨). `files.json`을 `[{name, path, assetId}]` 형식으로 만든다.
-4. **준비**: `node scripts/session/prepare.mjs <work> <work>/files.json` 실행. `manifest.json`, `classify.txt`, `img/*.jpg`가 생긴다.
+2. **진행 표시**: `status: analyzing`과 `progress {done,total,stage}`로 업데이트한다. `if_version`이 필수다.
+3. **PDF 내려받기**: Artifact `action: read`에 `path: <assetId>`를 주고 하나씩 받는다(`paths` 일괄은 asset에 안 됨). `files.json`을 `[{name, path, assetId}]` 형식으로 만든다.
+4. **준비**: `node scripts/session/prepare.mjs <work> <work>/files.json`
 5. **분류와 범례**
-   - `classify.txt`를 보고 `sheets.json`을 작성한다(`sheet_type`: legend / pid / other).
-   - 범례 시트가 있으면 읽어서 `legend.json`을 작성한다.
-   - PFD면 `doc.json`에 `{"doc_type":"pfd","note":"PFD 판독 지침","summary":"전체 요약"}`을 쓴다. 지침 예시는 이번 작업의 doc.json 내용을 참고한다.
-6. **판독 지시문 생성**: `node scripts/session/make-prompts.mjs <work>` 실행. `prompts/f<fi>-p<p>.txt`가 생긴다.
-7. **시트별 판독**: 시트마다 Agent를 하나씩 병렬로 띄운다. 각 Agent는 지시문을 읽고 이미지를 열어 판독한 뒤 `out/f<fi>-p<p>.json`을 쓴다. 완료될 때마다 진행 상황을 업데이트한다.
-8. **병합·검증**: `node scripts/session/assemble.mjs <work>` 실행. `result.json`이 생긴다. 높음 등급 규칙 이슈가 많으면 원인을 먼저 확인한다(노이즈 여부).
-9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 주면 asset id가 나온다.
-10. **완료 표시**: `jobs/current`를 `{status:'done', resultAsset:<id>, finishedAt, message}`로 업데이트한다. 페이지가 자동으로 표시한다.
-11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <work>/result.json <PDF 폴더(원래 파일명)> <out.html>` 실행 후 SendUserFile로 전달한다.
+   - `classify.txt`를 보고 `sheets.json`을 작성한다.
+   - 범례가 있으면 `legend.json`을 작성한다.
+   - PFD면 `doc.json`에 `{"doc_type":"pfd","note":...,"summary":...}`를 쓴다.
+6. **판독 지시문 생성**: `node scripts/session/make-prompts.mjs <work>`
+7. **시트별 판독**: 시트마다 Agent를 병렬로 띄워 `out/f<fi>-p<p>.json`을 쓰게 한다.
+8. **병합**: `node scripts/session/assemble.mjs <work>`를 실행하면 `result.json`이 생긴다.
+9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 준다.
+10. **완료 표시**: `jobs/current`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
+11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html>`
 
-- 페이지 코드를 고친 뒤에는 `npm run build:artifact`를 실행한다. 그다음 `dist/artifact-chat/index.html`(채팅용)과 `dist/artifact/index.html`(직접 분석용)을 같은 URL로 재게시한다.
-- scratchpad는 세션마다 사라지므로 이번 작업 폴더(job1)는 새 세션에 없다. 원본 PDF와 결과 JSON은 아티팩트에 남아 있다.
+**POSCO 결과 HTML 다시 만들기** (새 세션)
+1. 결과 asset `6deebc1e…`과 PDF asset 8개, 물질수지 asset `1f5619f3…`을 `Artifact read`로 받는다.
+2. PDF는 원래 파일명으로 한 폴더에 둔다.
+3. `node scripts/apply-massbalance.mjs result.json mb.json result-mb.json`
+4. `node scripts/build-standalone.mjs result-mb.json <PDF 폴더> POSCO_CP3_PFD_분석결과.html`
 
 ## 5. 남은 할 일
-1. **PR 생성 및 머지**: 브랜치의 미머지 커밋을 `main`에 반영한다(사용자 요청 시).
-2. **실제 P&ID로 검증**: 지금까지 실제 도면은 PFD뿐이었다. 범례 시트가 있는 실제 P&ID 세트로 판독 정확도를 확인한다.
-3. **대량 세트(약 75장) 처리 확인**: 사용자가 처음 75장으로 시도했다가 "페이지에서 바로 분석" 방식이 5/75에서 멈췄다.
-   - 이어서 분석과 실패 시트 분할 재시도로 고쳤지만 실제 Claude로는 미검증이다.
-   - 채팅 분석 방식으로 처리할 때 Agent 동시 실행 수와 사용량을 조절해야 한다.
-4. **노이즈 줄이기**: 낮음 등급에 근거가 약한 지적이 일부 섞인다(예: "예비 펌프 미표시").
-   - PFD에서 이름 없는 펌프에 임시 이름(PUMP-1 등)을 붙이는 방식도 검토가 필요하다.
-5. **Flow 가독성**: 시트가 많으면 노드가 빽빽하다. 지금은 첫 도면만 기본 표시한다. 시트 간 연결 보기 개선을 검토한다.
-6. **로컬 서버 API 경로를 실제 키로 1회 검증**: 사용자는 추가 비용 때문에 보류 중이다.
-7. **공유 설정 확인**: "직접 분석" 페이지가 링크 공유 상태다. 도면 업로드에는 비공개 채팅 분석 페이지를 쓴다.
+1. **PR 생성·머지**: 미머지 커밋을 `main`에 반영한다(사용자 요청 시).
+2. **실제 P&ID 세트(범례 포함)로 판독 정확도 검증**: 지금까지 실제 도면은 PFD만 분석했다.
+3. **대량 세트(약 75장) 처리 확인**: 채팅 분석으로 처리할 때 Agent 동시 실행 수를 조절해야 한다.
+4. **경로 추적 개선**
+   - Line No.가 연결 기호 옆에 있으면 기호 외곽선만 칠해지는 경우가 있다(예: 1번 도면 1214).
+   - 같은 색·선 모양의 다른 배관이 표식 없이 이어진 곳에서는 함께 칠해질 수 있다.
+   - 도면 1장 기준 경로 계산에 수 초가 걸린다(배경에서 미리 계산함).
+5. **위치 찾기에서 Notes 영역 제외**: POSCO 1번 도면 Notes 문단의 스트림 번호(1315 등)에 위치가 잡힌다.
+6. **검토 항목 노이즈 줄이기**, PFD의 이름 없는 펌프 임시 이름(PUMP-1) 검토.
+7. **"직접 분석" 페이지 공유 설정 확인**: 링크 공유 상태라, 도면 업로드에는 비공개 채팅 분석 페이지를 쓴다.
 
 ## 6. 관련 파일
 | 경로 | 내용 |
 |---|---|
-| `server/index.js` | Express API (`/api/analyze`, `/api/demo`, `/api/status`) |
-| `server/analyzer.js` | Claude API 일괄 분석 (Structured Outputs, 서버 방식) |
-| `server/pdfText.js` | Node용 pdf.js 래퍼 |
-| `shared/pidText.js` | 텍스트 레이어 추출, 태그 위치 검색 (세로 글자·분리된 계기 태그·가까운 위치 우선) |
-| `shared/postprocess.js` | 결과 정규화, 위치 보정, 연결성·범례 검증, PFD 처리, Off-page 짝짓기 |
-| `shared/merge.js` | 시트별 결과 병합 (id 충돌 처리, 분할 판독 결과 합치기) |
-| `shared/prompts.js` | 판독 지침과 결과 형식 (서버·브라우저·세션 공용) |
-| `public/index.html`, `app.js`, `styles.css` | 화면 (Flow, 리스트, 검토 항목, 도면 뷰어, 실행 모드 분기) |
-| `public/engine.js` | 페이지에서 바로 분석 (단계별 호출, 이어서 분석, 시트 분할 재시도) |
-| `public/pidview.js` | Flow 기본 보기: 원본 PDF 도면 위에 설비·Line No. 클릭 영역, 유량 표시 (자동배치와 전환) |
-| `public/chatmode.js` | 채팅 분석 모드 (업로드 → 분석 요청 → 결과 표시) |
-| `shared/massbalance.js` | 물질수지 읽기(xlsx/csv/PDF), 도면 매칭, 불일치 검출, Flow 표시 값 |
-| `samples/PID-100-MB.xlsx`, `.csv`, `make_sample_mb.py` | 샘플 물질수지와 생성 스크립트 |
-| `test/massbalance.test.js` | 물질수지 테스트 6개 |
-| `public/set-pdf-worker.js` | 단일 HTML용 pdf.js 워커 대체 |
-| `scripts/build-artifact.mjs` | 아티팩트 번들 생성 (`dist/artifact`, `dist/artifact-chat`) |
-| `scripts/build-standalone.mjs` | 보기 전용 단일 HTML 생성 |
-| `scripts/session/prepare.mjs`, `render_pages.py`, `make-prompts.mjs`, `assemble.mjs` | 채팅 세션 분석 단계별 스크립트 |
-| `samples/PID-100-000~002.pdf`, `demo-analysis.json`, `make_sample_pid.py` | 샘플 도면(범례 1 + P&ID 2, 의도적 결함 포함)과 데모 결과 |
-| `test/postprocess.test.js` | 후처리·병합 테스트 10개 |
-| `README.md` | 실행 방법 전체 |
+| `public/index.html`, `app.js`, `styles.css` | 화면: Flow 도구 막대·리스트·검토 항목·상세 정보·도면 뷰어·물질수지 조회 창 |
+| `public/pidview.js` | Flow **기본 보기**: 원본 PDF + 클릭 영역, Line No. 테두리·값 태그, 선택 경로·Main Stream 표시, 선 클릭 선택, 연결목록 버튼, 확대·이동 기억 |
+| `shared/pdfGeom.js` | PDF 벡터 선·화살촉 추출, Stream 경로 추적, 번호 없는 선 추적, Main Stream 선 찾기 |
+| `shared/massbalance.js` | 물질수지 읽기·매칭·검토 항목, Flow 표시 값, Li 농도 계산 |
+| `public/chatmode.js` | 채팅 분석 모드: 업로드, 분석 요청, 결과·물질수지 불러오기와 저장 |
+| `public/engine.js` | 페이지에서 바로 분석 |
+| `shared/postprocess.js`, `merge.js`, `pidText.js`, `prompts.js` | 결과 정규화·검증, 시트 병합, 텍스트 위치, 판독 지침 |
+| `server/*.js` | 로컬 서버(API 키 방식) |
+| `scripts/build-artifact.mjs` | 아티팩트 번들(`dist/artifact`, `dist/artifact-chat`) |
+| `scripts/build-standalone.mjs` | 보기 전용 단일 HTML |
+| `scripts/apply-massbalance.mjs` | 결과 JSON에 물질수지 적용(단일 HTML용) |
+| `scripts/session/*` | 채팅 분석 단계별 스크립트 |
+| `samples/` | 샘플 범례 1장 + P&ID 2장, 데모 결과, 샘플 물질수지(`PID-100-MB.xlsx/.csv`) |
+| `test/postprocess.test.js`, `test/massbalance.test.js` | 테스트 20개(후처리·병합·경로 추적·물질수지·Li) |
+| `README.md` | 사용법 전체 |
