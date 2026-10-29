@@ -539,6 +539,7 @@ function bindFlowToolbar() {
   markFlowMode();
   ['#optInstruments', '#optUtility', '#drawingFilter'].forEach((s) => $(s).addEventListener('change', applyFlowFilter));
   $('#optNav').addEventListener('change', () => pv.refresh());
+  $('#optMain').addEventListener('change', showMainStream);
   $('#flowValue').addEventListener('change', () => {
     state.flowKey = currentValueKey();
     updateFlowValues();
@@ -591,6 +592,13 @@ function flowNav() {
   return { anchor: n, prev: uniq(prev), next: uniq(next) };
 }
 
+/** Main Stream 주황 표시 켜고 끄기 (기본 보기, 기본은 꺼짐) */
+function showMainStream() {
+  const on = $('#optMain').checked;
+  $('#pidView').classList.toggle('show-main', on);
+  $('#lgMain').hidden = !on;
+}
+
 function setFlowMode(mode) {
   if (mode === state.flowMode) return;
   state.flowMode = mode;
@@ -614,6 +622,8 @@ function markFlowMode() {
   $('#legendAuto').hidden = basic;
   $('#legendBasic').hidden = !basic;
   $('#optNavLabel').hidden = !basic; // 연결목록 버튼은 기본 보기에서만
+  $('#optMainLabel').hidden = !basic;
+  showMainStream();
   $('#flowHint').textContent = basic
     ? '원본 도면 위의 설비·Line No.나 선·화살표를 클릭하면 상세 정보가 표시되고, 선택한 라인의 경로가 붉게 표시됩니다. 더블클릭: 확대 보기, Off-page는 연결 도면으로 이동. 휠: 확대/축소, 드래그: 이동. 연결목록을 켜면 ◀ From / To ▶ 버튼으로 흐름을 따라갈 수 있습니다.'
     : '설비나 라인을 클릭하면 상세 정보가 표시됩니다.';

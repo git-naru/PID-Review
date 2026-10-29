@@ -87,6 +87,7 @@
           <label title="계기·밸브와 신호선/설치 위치 연결을 함께 표시"><input type="checkbox" id="optInstruments" /> 계기·밸브</label>
           <label><input type="checkbox" id="optUtility" /> 유틸리티</label>
           <label id="optNavLabel" title="선택한 설비·라인 아래에 ◀ From / To ▶ 이동 버튼 표시"><input type="checkbox" id="optNav" /> 연결목록</label>
+          <label id="optMainLabel" title="도면 범례의 MAIN FLOW와 같은 굵기·색의 선을 주황색으로 표시"><input type="checkbox" id="optMain" /> Main Stream</label>
           <button class="btn small" id="btnFitWidth" type="button" title="도면 가로 폭에 맞춰 크게 보기">폭맞춤</button>
           <button class="btn small" id="btnFit" type="button" title="도면 전체가 보이게">화면 맞춤</button>
         </div>
@@ -102,7 +103,7 @@
         <ul class="legend" id="legendBasic" hidden>
           <li><i class="lg eq"></i>설비</li>
           <li><i class="lg lnbox"></i>Line No.</li>
-          <li><i class="lg mainst"></i>Main Stream</li>
+          <li id="lgMain" hidden><i class="lg mainst"></i>Main Stream</li>
           <li><i class="lg est"></i>AI 추정 위치</li>
         </ul>
         <ul class="legend" id="legendAuto">
