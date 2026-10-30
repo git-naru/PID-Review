@@ -102,6 +102,15 @@ export function createPidView(container, ui) {
     glide = { from: { z: v.z, tx: v.tx, ty: v.ty }, to, t0: performance.now(), dur };
     run();
   }
+  /** 화면의 (mx,my)를 기준으로 f배를 바로 (두 손가락 확대처럼 손을 그대로 따라가야 할 때) */
+  function zoomNow(f, mx, my) {
+    if (glide || zoomTo || fling) stopMotion();
+    const z = clampZ(v.z * f);
+    v.tx = mx - ((mx - v.tx) * z) / v.z;
+    v.ty = my - ((my - v.ty) * z) / v.z;
+    v.z = z;
+    apply();
+  }
   /** 화면의 (mx,my)를 기준으로 f배: 연속으로 부르면 목표 배율이 쌓이고 화면은 부드럽게 따라간다 */
   function zoomSmooth(f, mx, my) {
     if (glide || fling) stopMotion();
@@ -158,19 +167,75 @@ export function createPidView(container, ui) {
     e.preventDefault();
     const r = container.getBoundingClientRect();
     const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
-    const f = Math.min(1.25, Math.max(1 / 1.25, Math.exp(-px * (e.ctrlKey ? 0.006 : 0.0011))));
-    zoomSmooth(f, e.clientX - r.left, e.clientY - r.top);
+    if (e.ctrlKey) {
+      // 터치패드 두 손가락 확대(브라우저가 Ctrl+휠로 보냄): 손가락을 그대로 따라가게 바로, 1:1로
+      zoomNow(Math.exp(-px * 0.01), e.clientX - r.left, e.clientY - r.top);
+      return;
+    }
+    zoomSmooth(Math.min(1.25, Math.max(1 / 1.25, Math.exp(-px * 0.0011))), e.clientX - r.left, e.clientY - r.top);
   }, { passive: false });
+  // Safari(Mac) 터치패드 두 손가락 확대는 gesture 이벤트로 온다. 터치 화면에서 이미 두 손가락으로 처리 중이면 무시
+  let gesture = null;
+  container.addEventListener('gesturestart', (e) => {
+    e.preventDefault();
+    if (!v.page || touches.size >= 2) return;
+    const r = container.getBoundingClientRect();
+    stopMotion();
+    gesture = { z: v.z, x: e.clientX - r.left, y: e.clientY - r.top };
+  });
+  container.addEventListener('gesturechange', (e) => {
+    e.preventDefault();
+    if (!gesture || touches.size >= 2) return;
+    zoomNow((gesture.z * e.scale) / v.z, gesture.x, gesture.y);
+  });
+  container.addEventListener('gestureend', (e) => { e.preventDefault(); gesture = null; });
 
   let drag = null, moved = false;
+  // 터치 화면: 손가락 두 개로 확대·축소하면서 이동 (두 손가락 가운데 아래의 도면 점이 손가락을 따라간다)
+  const touches = new Map(); // pointerId → {x, y} (화면 좌표, 컨테이너 기준)
+  let pinch = null;
+  const local = (e) => { const r = container.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const pinchState = () => {
+    const [a, b] = [...touches.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  };
+  const startPinch = () => {
+    const ps = pinchState();
+    pinch = { ...ps, z: v.z, px: (ps.mx - v.tx) / v.z, py: (ps.my - v.ty) / v.z };
+  };
   container.addEventListener('pointerdown', (e) => {
     if (!v.page || e.button !== 0) return;
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, local(e));
+      container.setPointerCapture(e.pointerId);
+      if (touches.size === 2) {
+        // 두 번째 손가락: 끌기를 멈추고 두 손가락 확대로 (클릭으로 선택되지 않게)
+        stopMotion();
+        drag = null;
+        moved = true;
+        startPinch();
+        return;
+      }
+      if (touches.size > 2) return;
+    }
     // 미끄러지는 중에 누르면 멈추기만 한다 (클릭으로 선택되지 않게)
     const stopped = stopMotion();
     drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty, id: e.pointerId, samples: [] };
     moved = stopped;
   });
   container.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) {
+      touches.set(e.pointerId, local(e));
+      if (pinch && touches.size >= 2) {
+        const ps = pinchState();
+        const z = clampZ(pinch.z * (ps.d / pinch.d));
+        v.z = z;
+        v.tx = ps.mx - pinch.px * z;
+        v.ty = ps.my - pinch.py * z;
+        apply();
+        return;
+      }
+    }
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (!drag.active && Math.hypot(dx, dy) < 4) return;
@@ -183,6 +248,17 @@ export function createPidView(container, ui) {
     apply();
   });
   const end = (e) => {
+    if (touches.delete(e.pointerId) && pinch) {
+      // 두 손가락 중 하나를 떼면: 남은 손가락으로 계속 끌 수 있게
+      pinch = null;
+      if (touches.size === 1) {
+        const [[id, t]] = [...touches];
+        const r = container.getBoundingClientRect();
+        drag = { x: t.x + r.left, y: t.y + r.top, tx: v.tx, ty: v.ty, id, samples: [], active: true };
+      } else drag = null;
+      if (touches.size >= 2) startPinch();
+      return;
+    }
     // 놓을 때 움직이던 속도로 조금 더 미끄러진다 (마지막 0.1초 동안의 속도)
     const sm = drag?.active ? drag.samples : [];
     if (e.type === 'pointerup' && sm.length >= 2 && performance.now() - sm.at(-1).t < 60) {
