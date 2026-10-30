@@ -157,6 +157,7 @@ function initStatic(notice) {
     const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
     labels.push(`${unit} · ${doc === 'pid' ? 'P&ID' : 'PFD'} ${b.result.files.length}장`);
   }
+  runtime.staticLabels = labels;
   const first = bundles[0];
   const when = first.result.meta?.analyzedAt ? new Date(first.result.meta.analyzedAt).toLocaleString('ko-KR') : '';
   notice.hidden = false;
@@ -817,7 +818,9 @@ function clearResult() {
   $('#flowEmpty').hidden = false;
   $('#zoomBtns').hidden = true;
   $('#slotEmpty').hidden = false;
-  $('#slotEmpty').innerHTML = `<b>${esc(slotLabel())}</b> 자료가 아직 없습니다.`;
+  $('#slotEmpty').innerHTML = MODE === 'static' && runtime.staticLabels
+    ? `<b>${esc(slotLabel())}</b> 자료는 이 파일에 없습니다. (이 파일에 든 자료: ${esc(runtime.staticLabels.join(', '))})`
+    : `<b>${esc(slotLabel())}</b> 자료가 아직 없습니다.`;
   $('#summary').hidden = true;
   $('#statusBar').hidden = $('#runBox').hidden && $('#progress').hidden;
   $('#btnExport').disabled = true;
