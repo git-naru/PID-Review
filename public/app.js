@@ -979,7 +979,7 @@ function applyFlowFilter() {
     return;
   }
   if (!cy) return;
-  // 계기·밸브와 유틸리티는 자동배치에서도 표시하지 않는다 (공정 흐름만)
+  // 계기·밸브는 자동배치에서도 표시하지 않는다. 유틸리티 선은 표시 (용수·스팀·공기 PFD가 비지 않게)
   const page = $('#drawingFilter').value;
   cy.batch(() => {
     cy.nodes().forEach((n) => {
@@ -990,7 +990,7 @@ function applyFlowFilter() {
     });
     cy.edges().forEach((e) => {
       const k = e.data('kind');
-      let vis = k !== 'signal' && k !== 'assoc' && k !== 'utility';
+      let vis = k !== 'signal' && k !== 'assoc';
       if (e.data('type') === 'link' && page !== 'all') vis = false;
       e.style('display', vis ? 'element' : 'none');
     });

@@ -30,7 +30,7 @@ export function createPidView(container, ui) {
   // 도면별로 마지막 확대·이동 상태를 기억 (보기 방식을 바꿨다 돌아와도 그대로)
   const views = new Map();
   const remember = () => { if (v.key && v.page) views.set(v.key, { z: v.z, tx: v.tx, ty: v.ty, cw: container.clientWidth, ch: container.clientHeight }); };
-  const filter = { instruments: false, utility: false };
+  const filter = { instruments: false, utility: true }; // 계기·밸브는 숨기고 유틸리티 선은 표시 (유틸리티 PFD가 비지 않게)
   let selected = new Set();
 
   // ---- 화면 이동·확대
