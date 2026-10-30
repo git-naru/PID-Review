@@ -127,9 +127,10 @@ export function mergeSheets(sheets, legend, parts, failures = []) {
       loc: { file_index: f.sheet.file_index, page: f.sheet.page, bbox: null },
     });
   }
-  const pidCount = sheets.filter((s) => s.sheet_type === 'pid').length;
+  const drawn = sheets.filter((s) => s.sheet_type === 'pid' || s.sheet_type === 'pfd');
+  const kind = drawn.length && drawn.every((s) => s.sheet_type === 'pfd') ? 'PFD' : 'P&ID';
   const summary = summaries.length <= 4 ? summaries.join(' / ')
-    : `P&ID ${pidCount}장 중 ${parts.length}장 판독. ${summaries.slice(0, 3).join(' / ')} 외 ${summaries.length - 3}장`;
+    : `${kind} ${drawn.length}장 중 ${parts.length}장 판독. ${summaries.slice(0, 3).join(' / ')} 외 ${summaries.length - 3}장`;
   return { summary, legend, drawings, nodes, lines, issues };
 }
 

@@ -76,6 +76,7 @@
 - **Main Stream 체크**: 범례(SYMBOLS)의 "MAIN FLOW" 견본 선과 굵기·색이 같은 선을 주황색(투명도 80%)으로 표시한다. 견본이 없는 도면에서는 표시하지 않는다.
   - 색을 지정하지 않은 선은 PDF 기본색(검정)으로 본다. 0003번은 견본만 색 지정이 없어 누락됐었다.
   - POSCO 0006~0008번은 MAIN FLOW 굵기(2.04)의 공정선이 없어 표시되지 않는 것이 맞다.
+- **PFD 분석(바로 분석 페이지)**: 시트 분류에 "pfd"가 있다. 올릴 때 PFD를 골랐거나 PFD 시트가 더 많으면 PFD 지침(`PFD_NOTE`, `shared/prompts.js`)으로 판독하고 `doc_type: 'pfd'`로 낸다. 분류가 모두 "other"여도 파일명·도면 번호·제목에 PFD / PROCESS FLOW DIAGRAM이 있으면 PFD 시트로 본다. 채팅 분석도 `sheets.json`에 `pfd`를 쓸 수 있고, `doc.json`에 note가 없으면 `PFD_NOTE`를 쓴다.
 - **이전 / 다음 버튼**: 도면 선택 상자 양옆. 넘길 도면이 없으면 버튼만 회색(비활성), 경고창 없음.
 - **도면 안 물질수지**: 시트 안 스트림 표(H&MB) 값을 판독 때 라인 specs로 옮기고(`shared/prompts.js`), 물질수지 파일이 없으면 `drawingMassBalance()`로 물질수지를 만들어 쓴다(칩 "도면 스트림 표", 검토 항목은 만들지 않음). 파일을 넣으면 파일 우선, 도면 값과의 불일치는 검토 항목.
   - POSCO PFD의 스트림 표는 JBIG2 그림이다. pdf.js wasm 디코더를 `vendor/pdf-wasm.js`(base64, `scripts/pdf-wasm.mjs`가 생성)로 넣어 기본 보기에서도 표가 보이게 했다(`public/pdfopts.js`).

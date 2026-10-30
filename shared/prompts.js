@@ -96,18 +96,30 @@ export const SHEET_SHAPE = `{
 }`;
 
 /** 시트 분류: 각 페이지의 표제란 부근 텍스트로 범례/P&ID/기타를 판별 */
+/** PFD(공정 흐름도) 시트 판독 지침: 채팅 분석(doc.json)과 브라우저 분석이 같이 쓴다 */
+export const PFD_NOTE = `This sheet is a PROCESS FLOW DIAGRAM (PFD), not a P&ID. Read it as a PFD:
+- Equipment usually has no tag number: use its full label as written (e.g. "OP 1 - LIME SLAKER") as both "id" and "name", and leave "tag" empty. If a quantity or number of units is written, put it in specs.
+- Streams are numbered in markers drawn on the flow lines (e.g. 1101). Make one line per numbered stream: id "S-<number>", line_no "<number>", size and spec_class empty. Unnumbered connections between units are lines too (line_no "", id "LINE-<n>"). Use kind "utility" only for utilities (water, air, steam...), otherwise "process". Put the flow type from the SYMBOLS box (main / secondary / eventual) and the stream description in "service".
+- Copy every value of that stream from the stream table on the sheet into the line "specs", with units in the name, e.g. {"name":"Nominal mass flow (t/h)","value":"1,303"}. Include nominal and design flows, density, temperature, % solids, Li concentration, design factor and run time when given.
+- Sources and destinations such as "FROM WATER STORAGE" or "TO LITHIUM CARBONATE PLANT" are battery_limit or offpage nodes. When a drawing number is written, make it an offpage node with that number in offpage_ref.
+- Give bbox for every stream number marker ON THE DIAGRAM (the same numbers also appear in the stream table header; never point at the table) and for every equipment label.
+- A PFD carries no line sizes, pipe classes or equipment tag numbers: do not report those as missing. Report real issues: streams in the table that are not on the diagram or the reverse, units with no inlet or outlet, references to drawings not in the uploaded set, inconsistent or duplicated stream numbers, and notes that leave scope or equipment count undefined when that matters for cost.
+- Mention in sheet_summary (Korean) the notes that matter for CAPEX, e.g. the production basis and operating hours.`;
+
 export function classifyPrompt(pageSnippets, hasImages) {
   return `${ROLE}
 
-Classify each page of an uploaded P&ID set. For every page decide whether it is a legend / symbols sheet ("legend"),
-a P&ID sheet ("pid") or anything else such as a cover or index ("other"), and read its drawing number, title and revision
-from the title block.${hasImages ? '\nPages without a text layer are attached as images, in the order they are listed below as (image n).' : ''}
+Classify each page of an uploaded P&ID / PFD set. For every page decide whether it is a legend / symbols sheet ("legend"),
+a P&ID sheet ("pid"), a process flow diagram ("pfd": title says PROCESS FLOW DIAGRAM / PFD, or the drawing number has
+"PFD"; streams with stream numbers and usually a stream table / mass balance) or anything else such as a cover, index or
+drawing list ("other"), and read its drawing number, title and revision from the title block. A sheet that has a small
+SYMBOLS box next to the diagram is still a "pid" or "pfd" sheet, not a legend.${hasImages ? '\nPages without a text layer are attached as images, in the order they are listed below as (image n).' : ''}
 
 Pages (text found in the title block area and any heading words):
 ${pageSnippets}
 
 Reply with only a JSON array, one object per page listed above:
-[{"file_index": number, "page": number, "sheet_type": "legend" | "pid" | "other", "drawing_no": string, "title": string, "revision": string}]`;
+[{"file_index": number, "page": number, "sheet_type": "legend" | "pid" | "pfd" | "other", "drawing_no": string, "title": string, "revision": string}]`;
 }
 
 /** 범례 시트 한 장 판독 */

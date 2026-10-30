@@ -7,17 +7,18 @@
 // - 사용 한도·권한 같은 계정 문제만 전체를 멈추고, 그때까지의 결과는 그대로 보여준다.
 // - 두 시트씩 동시에 판독하고, 진행 중에도 완료된 시트까지의 결과를 화면에 반영한다.
 import { extractTextFromDocument, pageTextForPrompt } from './shared/pidText.js';
-import { classifyPrompt, legendPrompt, sheetPrompt } from './shared/prompts.js';
+import { classifyPrompt, legendPrompt, sheetPrompt, PFD_NOTE } from './shared/prompts.js';
 import { postprocess } from './shared/postprocess.js';
 import { emptyLegend, mergeLegend, compactLegend, mergeSheets, combineOutputs, str } from './shared/merge.js';
 import { PDF_OPTIONS } from './pdfopts.js';
 
-const PROMPT_VERSION = 'v2'; // 프롬프트나 결과 형식이 바뀌면 올려서 이전 저장 결과를 쓰지 않게 한다
+const PROMPT_VERSION = 'v3'; // 프롬프트나 결과 형식이 바뀌면 올려서 이전 저장 결과를 쓰지 않게 한다
 const PROMPT_TEXT_BUDGET = 150_000; // 한 번의 호출에 넣을 텍스트 레이어 최대 글자 수 (입력 한도 256KiB)
 const TILE_LONG_SIDE = 1400; // 분할 이미지 한 장의 긴 변 (플랫폼이 약 1.2MP로 줄임)
 const CONCURRENCY = 2; // 플랫폼은 열람자당 두어 건을 동시에 처리한다
 const PARTIAL_EVERY_MS = 10_000;
 const LEGEND_WORDS = /LEGEND|SYMBOL|ABBREVIATION|범례|기호|약어/i;
+const PFD_WORDS = /PROCESS\s+FLOW\s+DIAGRAM|(^|[^A-Z])PFD([^A-Z]|$)/i;
 
 // 계정·권한 문제: 계속해도 모두 실패하므로 전체를 멈춘다
 const FATAL = new Set(['cancelled', 'not_granted', 'sampling_disabled', 'session_expired', 'rate_limited',
@@ -43,7 +44,8 @@ export class EngineError extends Error {
  * @param {(result:object)=>void} [opts.onPartial]  진행 중 중간 결과
  * @param {AbortSignal} opts.signal
  */
-export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex', onProgress, onPartial = () => {}, signal }) {
+/** docType: 올릴 때 고른 도면 종류('pfd' | 'pid'). PFD를 골랐으면 도면 시트를 PFD 지침으로 판독한다 */
+export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex', docType: docHint = '', onProgress, onPartial = () => {}, signal }) {
   const limits = await sample.limits().catch(() => null);
   const maxImages = limits?.images?.maxCount ?? 0;
   const store = getStore();
@@ -76,7 +78,7 @@ export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex',
     texts.forEach((t, fi) => t.pages.forEach((pg) => pages.push({ file_index: fi, page: pg.page, pg })));
     let sheets = await store.get(key('classify'));
     if (!sheets) {
-      onProgress(`시트 ${pages.length}장의 종류(범례/P&ID)를 판별하는 중...`);
+      onProgress(`시트 ${pages.length}장의 종류(범례/P&ID/PFD)를 판별하는 중...`);
       sheets = await classify(pages, files, docs, ask, maxImages);
       await store.set(key('classify'), sheets);
     }
@@ -103,9 +105,18 @@ export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex',
     }
     legend.found = legendSheets.length > 0;
 
-    // 4) P&ID 시트별 판독
-    const pidSheets = sheets.filter((s) => s.sheet_type === 'pid');
-    if (!pidSheets.length) throw new EngineError('입력된 PDF에서 P&ID 시트를 찾지 못했습니다. 범례나 표지만 들어 있는지 확인하세요.');
+    // 4) 도면(P&ID·PFD) 시트별 판독
+    // 도면 시트가 하나도 없다고 분류됐어도 파일명·도면 번호·제목이 PFD면 PFD 시트로 본다
+    if (!sheets.some((s) => s.sheet_type === 'pid' || s.sheet_type === 'pfd')) {
+      sheets = sheets.map((s) => (s.sheet_type === 'other' && [files[s.file_index].name, s.drawing_no, s.title].some((t) => PFD_WORDS.test(t || ''))
+        ? { ...s, sheet_type: 'pfd' } : s));
+    }
+    const pidSheets = sheets.filter((s) => s.sheet_type === 'pid' || s.sheet_type === 'pfd');
+    if (!pidSheets.length) throw new EngineError('입력된 PDF에서 P&ID·PFD 도면 시트를 찾지 못했습니다. 범례나 표지만 들어 있는지 확인하세요.');
+    // 올릴 때 PFD를 골랐거나 PFD 시트가 더 많으면 PFD로 판독한다
+    const nPfd = pidSheets.filter((s) => s.sheet_type === 'pfd').length;
+    const docType = docHint === 'pfd' || (docHint !== 'pid' && nPfd * 2 > pidSheets.length) ? 'pfd' : 'pid';
+    const kindLabel = docType === 'pfd' ? 'PFD' : 'P&ID';
     const drawingsList = sheets.map((s) => `- ${s.drawing_no || '(번호 미상)'}: ${s.title || ''} [${s.sheet_type}] (file ${s.file_index}, page ${s.page})`).join('\n');
     const legendJson = JSON.stringify(compactLegend(legend));
     const done = new Map(); // sheet → 판독 결과
@@ -116,11 +127,11 @@ export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex',
 
     const build = () => {
       const parts = pidSheets.filter((s) => done.has(s)).map((s) => ({ sheet: s, out: done.get(s) }));
-      const raw = mergeSheets(sheets, legend, parts, failures);
+      const raw = { ...mergeSheets(sheets, legend, parts, failures), doc_type: docType };
       const result = postprocess(raw, files.map((f, i) => ({ name: f.name, text: texts[i] })));
       result.meta = {
         engine: 'claude.ai', tier, sheets: sheets.length,
-        progress: { total: pidSheets.length, done: done.size, failed: failures.filter((f) => f.sheet.sheet_type === 'pid').length },
+        progress: { total: pidSheets.length, done: done.size, failed: failures.filter((f) => pidSheets.includes(f.sheet)).length },
       };
       return result;
     };
@@ -137,7 +148,7 @@ export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex',
     let fatal = null;
     const report = () => {
       const now = [...running].map((s) => sheetName(s, files)).join(', ');
-      onProgress(`P&ID 시트 판독 중: 완료 ${done.size}/${pidSheets.length}${failures.length ? `, 실패 ${failures.length}` : ''}${now ? ` · 진행 중 ${now}` : ''} — 시트당 1~3분, 두 장씩 동시에 진행합니다.`);
+      onProgress(`${kindLabel} 시트 판독 중: 완료 ${done.size}/${pidSheets.length}${failures.length ? `, 실패 ${failures.length}` : ''}${now ? ` · 진행 중 ${now}` : ''} — 시트당 1~3분, 두 장씩 동시에 진행합니다.`);
     };
     const worker = async () => {
       while (queue.length && !fatal) {
@@ -145,7 +156,7 @@ export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex',
         running.add(s);
         report();
         try {
-          const ctx = { s, files, docs, maxImages, legendJson, drawingsList, page: pageText(s), ask, onSplit: () => report() };
+          const ctx = { s, files, docs, maxImages, legendJson, drawingsList, page: pageText(s), ask, docType, onSplit: () => report() };
           const out = await analyzeSheet(ctx);
           done.set(s, out);
           await store.set(key('sheet', s, legendJson.length), out);
@@ -199,7 +210,7 @@ async function analyzeSheet(ctx) {
   return combineOutputs(outs);
 }
 
-async function askSheet({ s, files, docs, maxImages, legendJson, drawingsList, page, ask }, region) {
+async function askSheet({ s, files, docs, maxImages, legendJson, drawingsList, page, ask, docType }, region) {
   const { blobs, note } = await pageImages(docs[s.file_index], s.page, maxImages, region?.box);
   const textPage = region ? { ...page, runs: page.runs.filter((r) => inBox(r.bbox, region.box, 0.03)) } : page;
   return ask(sheetPrompt({
@@ -207,9 +218,10 @@ async function askSheet({ s, files, docs, maxImages, legendJson, drawingsList, p
     legendJson,
     drawingsList,
     textLayer: pageTextForPrompt(textPage, PROMPT_TEXT_BUDGET - legendJson.length - drawingsList.length),
-    hasTextLayer: page.runs.length > 0,
+    hasTextLayer: page.runs.length > 0 && docType !== 'pfd',
     region,
     imageNote: note,
+    docNote: docType === 'pfd' ? PFD_NOTE : '',
   }), blobs);
 }
 
@@ -254,9 +266,12 @@ async function classify(pages, files, docs, ask, maxImages) {
   // 텍스트가 있는 페이지는 표제란(우하단)과 제목성 단어로 판별, 없는 페이지는 축소 이미지로 판별
   const imagePages = pages.filter((p) => !p.pg.runs.length).slice(0, maxImages);
   const snippets = pages.map((p) => {
-    const tb = p.pg.runs.filter((r) => r.bbox[0] > 0.55 && r.bbox[1] > 0.7).map((r) => r.text);
+    // 표제란(오른쪽 아래 구석)을 먼저, 긴 문장(NOTES 본문)은 빼서 도면 제목·번호가 잘리지 않게 한다
+    const corner = (r) => r.bbox[0] > 0.7 && r.bbox[1] > 0.85;
+    const tb = p.pg.runs.filter((r) => r.bbox[0] > 0.55 && r.bbox[1] > 0.7 && r.text.length <= 80)
+      .sort((a, b) => corner(b) - corner(a)).map((r) => r.text);
     const heads = p.pg.runs.filter((r) => LEGEND_WORDS.test(r.text)).map((r) => r.text);
-    const words = [...new Set([...tb, ...heads])].slice(0, 40).join(' / ').slice(0, 1500);
+    const words = [...new Set([...tb, ...heads])].slice(0, 60).join(' / ').slice(0, 1800);
     const imgNo = imagePages.indexOf(p);
     const body = p.pg.runs.length ? words || '(no title block text)' : imgNo >= 0 ? `(no text layer - see image ${imgNo + 1})` : '(no text layer)';
     return `- file_index ${p.file_index} ("${files[p.file_index].name}"), page ${p.page}: ${body}`;
@@ -268,8 +283,11 @@ async function classify(pages, files, docs, ask, maxImages) {
   const list = Array.isArray(answer) ? answer : [];
   return pages.map((p) => {
     const a = list.find((x) => Number(x?.file_index) === p.file_index && Number(x?.page) === p.page) || {};
-    let type = ['legend', 'pid', 'other'].includes(a.sheet_type) ? a.sheet_type : null;
-    if (!type) type = p.pg.runs.some((r) => LEGEND_WORDS.test(r.text) && r.bbox[0] > 0.55 && r.bbox[1] > 0.7) ? 'legend' : 'pid';
+    let type = ['legend', 'pid', 'pfd', 'other'].includes(a.sheet_type) ? a.sheet_type : null;
+    if (!type) {
+      type = p.pg.runs.some((r) => LEGEND_WORDS.test(r.text) && r.bbox[0] > 0.55 && r.bbox[1] > 0.7) ? 'legend'
+        : PFD_WORDS.test(files[p.file_index].name) || p.pg.runs.some((r) => PFD_WORDS.test(r.text) && r.bbox[1] > 0.85) ? 'pfd' : 'pid';
+    }
     return { file_index: p.file_index, page: p.page, sheet_type: type, drawing_no: str(a.drawing_no), title: str(a.title), revision: str(a.revision) };
   });
 }

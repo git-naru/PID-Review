@@ -335,7 +335,9 @@ async function analyzeWithAccount(resume = false) {
     toast(`PDF 총 용량이 ${(total / 1048576).toFixed(1)}MB입니다. 60MB 이하로 나누어 분석해 주세요.`, true);
     return;
   }
-  state.lastRun = { files };
+  // 이어서 분석할 때도 처음 고른 도면 종류(PFD / P&ID)로
+  const docType = resume ? state.lastRun?.docType || state.doc : state.doc;
+  state.lastRun = { files, docType };
   runAction = () => analyzeWithAccount(true);
   showRunBox(null);
   runtime.abort = new AbortController();
@@ -350,6 +352,7 @@ async function analyzeWithAccount(resume = false) {
       sample: runtime.sample,
       pdfjs: pdfjsLib,
       tier: $('#tierSelect').value,
+      docType,
       signal: runtime.abort.signal,
       onProgress: (msg) => { $('#progressText').textContent = msg; },
       onPartial: (partial) => applyResult(partial, sources),
@@ -360,8 +363,9 @@ async function analyzeWithAccount(resume = false) {
     }
     applyResult(result, sources);
     const p = result.meta.progress;
-    if (p.failed) showRunBox(`P&ID ${p.total}장 중 ${p.done}장을 판독했고 ${p.failed}장은 실패했습니다. 실패한 시트는 검토 항목에 표시되어 있습니다.`, '실패한 시트 다시 분석');
-    else toast(`P&ID ${p.total}장 판독을 마쳤습니다.`);
+    const kind = result.doc_type === 'pfd' ? 'PFD' : 'P&ID';
+    if (p.failed) showRunBox(`${kind} ${p.total}장 중 ${p.done}장을 판독했고 ${p.failed}장은 실패했습니다. 실패한 시트는 검토 항목에 표시되어 있습니다.`, '실패한 시트 다시 분석');
+    else toast(`${kind} ${p.total}장 판독을 마쳤습니다.`);
   } catch (err) {
     if (err.partial) applyResult(err.partial, sources);
     const canResume = err.code !== 'not_granted' && err.code !== 'sampling_disabled';

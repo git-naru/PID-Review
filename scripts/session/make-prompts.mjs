@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { extractPdfText } from '../../server/pdfText.js';
 import { pageTextForPrompt } from '../../shared/pidText.js';
-import { sheetPrompt } from '../../shared/prompts.js';
+import { sheetPrompt, PFD_NOTE } from '../../shared/prompts.js';
 import { compactLegend, emptyLegend } from '../../shared/merge.js';
 
 const [workdir] = process.argv.slice(2);
@@ -24,13 +24,13 @@ await fs.mkdir(path.join(workdir, 'prompts'), { recursive: true });
 await fs.mkdir(path.join(workdir, 'out'), { recursive: true });
 const texts = await Promise.all(manifest.files.map(async (f) => extractPdfText(await fs.readFile(f.path))));
 let n = 0;
-for (const s of sheets.filter((x) => x.sheet_type === 'pid')) {
+for (const s of sheets.filter((x) => x.sheet_type === 'pid' || x.sheet_type === 'pfd')) {
   const meta = manifest.pages.find((p) => p.file_index === s.file_index && p.page === s.page);
   const pg = texts[s.file_index].pages[s.page - 1];
   const imageNote = `\nImages to look at (open each file; normalized page ranges): ${meta.images.map((im, i) => `image ${i + 1} = ${im.path} (${im.kind}, x ${im.range[0]}-${im.range[2]}, y ${im.range[1]}-${im.range[3]})`).join('; ')}. Coordinates you return are always for the whole page.`;
   const label = `${s.drawing_no || '(drawing no. unknown)'}${s.title ? ` "${s.title}"` : ''} = file ${s.file_index} ("${manifest.files[s.file_index].name}") page ${s.page}`;
   const out = path.join(workdir, 'out', `f${s.file_index}-p${s.page}.json`);
-  const prompt = sheetPrompt({ sheetLabel: label, legendJson, drawingsList, textLayer: pageTextForPrompt(pg, 150_000), hasTextLayer: pg.runs.length > 0 && doc.doc_type !== 'pfd', imageNote, docNote: doc.note || '' })
+  const prompt = sheetPrompt({ sheetLabel: label, legendJson, drawingsList, textLayer: pageTextForPrompt(pg, 150_000), hasTextLayer: pg.runs.length > 0 && doc.doc_type !== 'pfd', imageNote, docNote: doc.note || (doc.doc_type === 'pfd' ? PFD_NOTE : '') })
     + `\n\nSave ONLY that JSON object (UTF-8, no Markdown fences) to: ${out}`;
   await fs.writeFile(path.join(workdir, 'prompts', `f${s.file_index}-p${s.page}.txt`), prompt);
   n++;

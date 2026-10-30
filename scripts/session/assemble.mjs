@@ -22,7 +22,7 @@ legendSheets.forEach((s, i) => mergeLegend(legend, i === 0 ? legendPart : null, 
 legend.found = legendSheets.length > 0;
 
 const parts = [], failures = [];
-for (const s of sheets.filter((x) => x.sheet_type === 'pid')) {
+for (const s of sheets.filter((x) => x.sheet_type === 'pid' || x.sheet_type === 'pfd')) {
   const out = await read(path.join('out', `f${s.file_index}-p${s.page}.json`), null);
   if (out && typeof out === 'object' && Array.isArray(out.nodes)) parts.push({ sheet: s, out });
   else failures.push({ sheet: s, message: out ? '판독 결과 형식이 맞지 않습니다.' : '판독 결과가 없습니다.' });
@@ -32,7 +32,7 @@ const raw = { ...mergeSheets(sheets, legend, parts, failures), doc_type: doc.doc
 if (doc.summary) raw.summary = doc.summary;
 const result = postprocess(raw, manifest.files.map((f, i) => ({ name: f.name, text: texts[i] })));
 result.files.forEach((f, i) => { f.assetId = manifest.files[i].assetId; });
-const pid = sheets.filter((x) => x.sheet_type === 'pid').length;
+const pid = sheets.filter((x) => x.sheet_type === 'pid' || x.sheet_type === 'pfd').length;
 result.meta = { engine: 'claude-code-session', analyzedAt: new Date().toISOString(), progress: { total: pid, done: parts.length, failed: failures.length } };
 await fs.writeFile(path.join(workdir, 'result.json'), JSON.stringify(result));
 console.log(JSON.stringify({ sheets: sheets.length, pid, done: parts.length, failed: failures.map((f) => `${f.sheet.file_index}:${f.sheet.page}`), stats: result.stats }));
