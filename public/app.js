@@ -988,6 +988,7 @@ function renderCy() {
     elements: els,
     minZoom: 0.15,
     maxZoom: 3,
+    wheelSensitivity: 0.35, // 기본값은 휠 한 칸에 너무 많이 확대된다
     style: flowStyle(),
   });
   cy.on('tap', 'node, edge', (e) => {

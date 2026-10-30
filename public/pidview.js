@@ -78,7 +78,7 @@ export function createPidView(container, ui) {
       if (k >= 1) { Object.assign(v, b); glide = null; }
     } else if (zoomTo) {
       const d = Math.log(zoomTo.z) - Math.log(v.z);
-      v.z = Math.abs(d) < 0.002 ? zoomTo.z : Math.exp(Math.log(v.z) + d * 0.28);
+      v.z = Math.abs(d) < 0.002 ? zoomTo.z : Math.exp(Math.log(v.z) + d * 0.2); // 매 프레임 남은 차이의 20%씩
       v.tx = zoomTo.mx - zoomTo.px * v.z;
       v.ty = zoomTo.my - zoomTo.py * v.z;
       if (v.z === zoomTo.z) zoomTo = null;
@@ -150,13 +150,16 @@ export function createPidView(container, ui) {
     glideTo({ z, tx: container.clientWidth / 2 - cx * z, ty: container.clientHeight / 2 - cy * z }, 320);
   }
 
-  container.addEventListener('wheel', (e) => {
-    if (!v.page) return;
+  // 마우스 휠 확대·축소: 도면 영역 어디서든(범례·확대 버튼 위 포함) 페이지가 스크롤되지 않고 도면이 확대된다.
+  // 휠 한 칸(약 100px)에 약 1.12배, 한 번에 최대 1.25배까지만(값을 크게 보내는 마우스 대비).
+  // 트랙패드는 작은 값이 여러 번 와서 그만큼 잘게, 핀치(ctrl)는 조금 더 민감하게. 화면은 목표 배율을 부드럽게 따라간다.
+  (container.parentElement || container).addEventListener('wheel', (e) => {
+    if (container.hidden || !v.page) return;
     e.preventDefault();
     const r = container.getBoundingClientRect();
-    // 휠 한 칸(약 100px)에 약 1.2배. 트랙패드는 작은 값이 여러 번 와서 그만큼 부드럽게, 핀치(ctrl)는 더 민감하게
     const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
-    zoomSmooth(Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left, e.clientY - r.top);
+    const f = Math.min(1.25, Math.max(1 / 1.25, Math.exp(-px * (e.ctrlKey ? 0.006 : 0.0011))));
+    zoomSmooth(f, e.clientX - r.left, e.clientY - r.top);
   }, { passive: false });
 
   let drag = null, moved = false;
