@@ -685,7 +685,22 @@ function bindFlowToolbar() {
     renderList();
     renderDetail();
   });
-  $('#btnFit').addEventListener('click', () => (state.flowMode === 'basic' ? pv.fit() : cy?.fit(cy.elements(':visible'), 30)));
+  $('#btnFit').addEventListener('click', () => {
+    if (state.flowMode === 'basic') pv.fit();
+    else cy?.stop().animate({ fit: { eles: cy.elements(':visible'), padding: 30 } }, { duration: 260, easing: 'ease-out-cubic' });
+  });
+  // 확대 / 축소: 화면 가운데 기준으로 1.25배씩
+  const zoomBy = (f) => {
+    if (state.flowMode === 'basic') { pv.zoomBy(f); return; }
+    if (!cy) return;
+    const level = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), cy.zoom() * f));
+    // 화면 가운데를 고정한 채 부드럽게
+    const c = { x: cy.width() / 2, y: cy.height() / 2 }, p0 = cy.pan(), z0 = cy.zoom();
+    cy.stop();
+    cy.animate({ zoom: level, pan: { x: c.x - ((c.x - p0.x) * level) / z0, y: c.y - ((c.y - p0.y) * level) / z0 } }, { duration: 220, easing: 'ease-out-cubic' });
+  };
+  $('#btnZoomIn').addEventListener('click', () => zoomBy(1.25));
+  $('#btnZoomOut').addEventListener('click', () => zoomBy(1 / 1.25));
   $('#btnFitWidth').addEventListener('click', () => {
     if (state.flowMode === 'basic') { pv.fitWidth(); return; }
     if (!cy) return;
@@ -693,8 +708,7 @@ function bindFlowToolbar() {
     const bb = cy.elements(':visible').boundingBox();
     if (!bb.w) return;
     const z = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), (cy.width() - 40) / bb.w));
-    cy.zoom(z);
-    cy.pan({ x: 20 - bb.x1 * z, y: 20 - bb.y1 * z });
+    cy.stop().animate({ zoom: z, pan: { x: 20 - bb.x1 * z, y: 20 - bb.y1 * z } }, { duration: 260, easing: 'ease-out-cubic' });
   });
 }
 
@@ -788,6 +802,7 @@ function clearResult() {
   if (cy) { cy.destroy(); cy = null; }
   pv.reset();
   $('#flowEmpty').hidden = false;
+  $('#zoomBtns').hidden = true;
   $('#slotEmpty').hidden = false;
   $('#slotEmpty').innerHTML = `<b>${esc(slotLabel())}</b> 자료가 아직 없습니다.`;
   $('#summary').hidden = true;
@@ -915,6 +930,7 @@ function ensureSinglePage() {
 
 function renderFlow() {
   $('#flowEmpty').hidden = true;
+  $('#zoomBtns').hidden = false;
   ensureSinglePage();
   updatePager();
   if (state.flowMode === 'basic') {
@@ -930,6 +946,7 @@ function renderFlow() {
 function renderCy() {
   const r = state.result;
   $('#flowEmpty').hidden = true;
+  $('#zoomBtns').hidden = false;
   const els = [];
   for (const n of r.nodes) {
     els.push({

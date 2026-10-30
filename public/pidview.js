@@ -11,10 +11,10 @@ import { extractGeometry, traceLine, traceDistance, nearestSegment, traceFromSeg
 export const FREE_ID = '__free__'; // Stream 번호 없이 도면에서 직접 고른 선
 
 const MIN_Z = 0.5, MAX_Z = 16;
-const MAX_CANVAS_PX = 8192;
+const BASE_CANVAS_PX = 4096; // 도면 전체 그림의 최대 크기 (확대한 부분은 보이는 영역만 따로 선명하게 그림)
 
 export function createPidView(container, ui) {
-  container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><svg class="pv-main" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><svg class="pv-flow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
+  container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><canvas class="pv-detail" hidden></canvas><svg class="pv-main" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><svg class="pv-flow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
   const flowSvg = container.querySelector('.pv-flow');
   const mainSvg = container.querySelector('.pv-main');
   const geoms = new Map(); // 도면별 선 데이터 (Promise)
@@ -22,7 +22,9 @@ export function createPidView(container, ui) {
   const notes = new Map(); // 도면별 NOTES 영역 (값 표시 안 함)
   const traces = new Map(); // 라인 id → 추적한 경로
   const stage = container.querySelector('.pv-stage');
-  const canvas = container.querySelector('.pv-canvas');
+  let canvas = container.querySelector('.pv-canvas');
+  let detail = container.querySelector('.pv-detail');
+  let detailKey = '';
   const marks = container.querySelector('.pv-marks');
   const msg = container.querySelector('.pv-msg');
 
@@ -34,11 +36,79 @@ export function createPidView(container, ui) {
   let selected = new Set();
 
   // ---- 화면 이동·확대
-  const apply = () => {
-    stage.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.z})`;
+  // 움직이는 동안에는 도면 위치(transform)만 바꾸고, 멈춘 뒤에 표시 굵기·글자 크기(--z)와 고해상도 다시 그리기를 한 번만 한다.
+  // (--z를 매번 바꾸면 표시 수백 개를 다시 계산해 끊겨 보인다)
+  let settleT = null;
+  const settle = () => {
     stage.style.setProperty('--z', v.z);
     remember();
+    scheduleRender();
   };
+  const apply = () => {
+    stage.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.z})`;
+    clearTimeout(settleT);
+    settleT = setTimeout(settle, 120);
+  };
+
+  // 부드러운 움직임: 목표 상태로 짧게 미끄러지기(맞춤·이동), 휠·버튼 확대는 목표 배율을 따라가기, 끌기 후 관성
+  let motion = 0; // requestAnimationFrame id
+  let glide = null; // {from, to, t0, dur}
+  let zoomTo = null; // {z, mx, my, px, py}: 화면의 (mx,my) 아래 도면 점 (px,py)를 고정한 채 배율 z로
+  let fling = null; // {vx, vy, t} px/ms
+  const stopMotion = () => {
+    const was = !!(glide || zoomTo || fling);
+    cancelAnimationFrame(motion);
+    motion = 0;
+    glide = zoomTo = fling = null;
+    return was;
+  };
+  const clampZ = (z) => Math.min(MAX_Z, Math.max(MIN_Z, z));
+  function tick(now) {
+    motion = 0;
+    if (glide) {
+      const k = Math.min(1, (now - glide.t0) / glide.dur);
+      const e = 1 - (1 - k) ** 3; // ease-out
+      const { from: a, to: b } = glide;
+      // 배율은 로그로 보간해야 확대·축소 속도가 일정해 보인다
+      const z = Math.exp(Math.log(a.z) + (Math.log(b.z) - Math.log(a.z)) * e);
+      const r = (z - a.z) / ((b.z - a.z) || 1);
+      v.z = z;
+      v.tx = b.z === a.z ? a.tx + (b.tx - a.tx) * e : a.tx + (b.tx - a.tx) * r;
+      v.ty = b.z === a.z ? a.ty + (b.ty - a.ty) * e : a.ty + (b.ty - a.ty) * r;
+      if (k >= 1) { Object.assign(v, b); glide = null; }
+    } else if (zoomTo) {
+      const d = Math.log(zoomTo.z) - Math.log(v.z);
+      v.z = Math.abs(d) < 0.002 ? zoomTo.z : Math.exp(Math.log(v.z) + d * 0.28);
+      v.tx = zoomTo.mx - zoomTo.px * v.z;
+      v.ty = zoomTo.my - zoomTo.py * v.z;
+      if (v.z === zoomTo.z) zoomTo = null;
+    } else if (fling) {
+      const dt = Math.min(40, now - fling.t);
+      fling.t = now;
+      v.tx += fling.vx * dt;
+      v.ty += fling.vy * dt;
+      const decay = 0.94 ** (dt / 16);
+      fling.vx *= decay;
+      fling.vy *= decay;
+      if (Math.hypot(fling.vx, fling.vy) < 0.02) fling = null;
+    }
+    apply();
+    if (glide || zoomTo || fling) motion = requestAnimationFrame(tick);
+  }
+  const run = () => { if (!motion) motion = requestAnimationFrame(tick); };
+  /** 목표 상태로 미끄러지듯 이동 */
+  function glideTo(to, dur = 260) {
+    stopMotion();
+    glide = { from: { z: v.z, tx: v.tx, ty: v.ty }, to, t0: performance.now(), dur };
+    run();
+  }
+  /** 화면의 (mx,my)를 기준으로 f배: 연속으로 부르면 목표 배율이 쌓이고 화면은 부드럽게 따라간다 */
+  function zoomSmooth(f, mx, my) {
+    if (glide || fling) stopMotion();
+    const z = clampZ((zoomTo ? zoomTo.z : v.z) * f);
+    zoomTo = { z, mx, my, px: (mx - v.tx) / v.z, py: (my - v.ty) / v.z };
+    run();
+  }
   const base = () => {
     const cw = container.clientWidth, ch = container.clientHeight;
     const s0 = Math.min(cw / v.pw, ch / v.ph) || 1;
@@ -53,72 +123,73 @@ export function createPidView(container, ui) {
   function fit() {
     if (!v.page) return;
     base();
-    v.z = 1;
-    v.tx = (container.clientWidth - v.W) / 2;
-    v.ty = (container.clientHeight - v.H) / 2;
-    apply();
-    scheduleRender();
+    glideTo({ z: 1, tx: (container.clientWidth - v.W) / 2, ty: (container.clientHeight - v.H) / 2 });
   }
   /** 폭맞춤: 도면 가로 폭을 화면 폭에 맞추고 위쪽부터 */
-  function fitWidth() {
+  function fitWidth(instant = false) {
     if (!v.page) return;
     base();
-    v.z = Math.min(MAX_Z, Math.max(1, (container.clientWidth - 8) / v.W));
-    v.tx = (container.clientWidth - v.W * v.z) / 2;
-    v.ty = 4;
-    apply();
-    scheduleRender();
+    const z = Math.min(MAX_Z, Math.max(1, (container.clientWidth - 8) / v.W));
+    const to = { z, tx: (container.clientWidth - v.W * z) / 2, ty: 4 };
+    if (instant) { stopMotion(); Object.assign(v, to); apply(); clearTimeout(settleT); settle(); } else glideTo(to);
   }
   /** 도면을 열 때: 전에 보던 상태가 있으면 그대로, 없으면 폭맞춤 */
   function restore() {
     const saved = views.get(v.key);
-    if (!saved) { fitWidth(); return; }
+    if (!saved) { fitWidth(true); return; }
+    stopMotion();
     base();
     Object.assign(v, { z: saved.z, tx: saved.tx, ty: saved.ty });
     apply();
-    scheduleRender();
-  }
-  function zoomAt(f, mx, my) {
-    const z = Math.min(MAX_Z, Math.max(MIN_Z, v.z * f));
-    v.tx = mx - ((mx - v.tx) * z) / v.z;
-    v.ty = my - ((my - v.ty) * z) / v.z;
-    v.z = z;
-    apply();
-    scheduleRender();
+    clearTimeout(settleT);
+    settle();
   }
   function centerOn(b, minZ = 2.5) {
-    const z = Math.max(v.z, minZ);
+    const z = Math.min(MAX_Z, Math.max(v.z, minZ));
     const cx = ((b[0] + b[2]) / 2) * v.W, cy = ((b[1] + b[3]) / 2) * v.H;
-    v.z = Math.min(MAX_Z, z);
-    v.tx = container.clientWidth / 2 - cx * v.z;
-    v.ty = container.clientHeight / 2 - cy * v.z;
-    apply();
-    scheduleRender();
+    glideTo({ z, tx: container.clientWidth / 2 - cx * z, ty: container.clientHeight / 2 - cy * z }, 320);
   }
 
   container.addEventListener('wheel', (e) => {
     if (!v.page) return;
     e.preventDefault();
     const r = container.getBoundingClientRect();
-    zoomAt(e.deltaY > 0 ? 1 / 1.15 : 1.15, e.clientX - r.left, e.clientY - r.top);
+    // 휠 한 칸(약 100px)에 약 1.2배. 트랙패드는 작은 값이 여러 번 와서 그만큼 부드럽게, 핀치(ctrl)는 더 민감하게
+    const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+    zoomSmooth(Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left, e.clientY - r.top);
   }, { passive: false });
 
   let drag = null, moved = false;
   container.addEventListener('pointerdown', (e) => {
     if (!v.page || e.button !== 0) return;
-    drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty, id: e.pointerId };
-    moved = false;
+    // 미끄러지는 중에 누르면 멈추기만 한다 (클릭으로 선택되지 않게)
+    const stopped = stopMotion();
+    drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty, id: e.pointerId, samples: [] };
+    moved = stopped;
   });
   container.addEventListener('pointermove', (e) => {
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!moved && Math.hypot(dx, dy) < 4) return;
-    if (!moved) { moved = true; container.setPointerCapture(drag.id); container.classList.add('dragging'); }
+    if (!drag.active && Math.hypot(dx, dy) < 4) return;
+    if (!drag.active) { drag.active = moved = true; container.setPointerCapture(drag.id); container.classList.add('dragging'); }
     v.tx = drag.tx + dx;
     v.ty = drag.ty + dy;
+    const t = performance.now();
+    drag.samples.push({ t, x: e.clientX, y: e.clientY });
+    while (drag.samples.length > 2 && t - drag.samples[0].t > 100) drag.samples.shift();
     apply();
   });
-  const end = () => { drag = null; container.classList.remove('dragging'); };
+  const end = (e) => {
+    // 놓을 때 움직이던 속도로 조금 더 미끄러진다 (마지막 0.1초 동안의 속도)
+    const sm = drag?.active ? drag.samples : [];
+    if (e.type === 'pointerup' && sm.length >= 2 && performance.now() - sm.at(-1).t < 60) {
+      const a = sm[0], b = sm.at(-1), dt = Math.max(1, b.t - a.t);
+      const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt;
+      if (Math.hypot(vx, vy) > 0.3) { fling = { vx, vy, t: performance.now() }; run(); }
+    }
+    drag = null;
+    container.classList.remove('dragging');
+  };
   container.addEventListener('pointerup', end);
   container.addEventListener('pointercancel', end);
   // 숨겨졌다 다시 보일 때(보기 방식 전환)는 크기가 같으므로 보던 상태를 유지하고, 실제 크기가 바뀔 때만 맞춘다
@@ -176,37 +247,71 @@ export function createPidView(container, ui) {
     } else ui.open(m.dataset.type, m.dataset.id);
   });
 
-  // ---- PDF 그리기 (확대하면 선명하게 다시 그림)
+  // ---- PDF 그리기
+  // 1) 도면 전체: 화면 맞춤 크기의 약 2배 해상도로 도면마다 한 번 (최대 4096px)
+  // 2) 그보다 크게 확대하면 보이는 영역(+여유)만 그 배율로 따로 그려 위에 겹친다.
+  //    전체를 확대 배율로 그리면 수백 MB짜리 그림을 만들고 옮기느라 화면이 1~2초 멈춘다.
+  // 다 그린 캔버스는 복사하지 않고 화면의 캔버스와 바꿔 끼운다.
   let renderT = null;
   function scheduleRender() {
     clearTimeout(renderT);
     renderT = setTimeout(render, 180);
   }
-  async function render() {
-    if (!v.page) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let scale = (v.W / v.pw) * v.z * dpr;
-    scale = Math.min(scale, MAX_CANVAS_PX / v.pw, MAX_CANVAS_PX / v.ph);
-    const want = `${v.key}@${scale.toFixed(3)}`;
-    if (want === v.rendered) return;
-    const seq = ++v.seq;
-    v.task?.cancel();
+  const swapIn = (old, fresh, cls) => {
+    fresh.className = cls;
+    fresh.style.cssText = old.style.cssText;
+    old.replaceWith(fresh);
+    return fresh;
+  };
+  async function draw(scale, region, seq) {
     const vp = v.page.getViewport({ scale });
+    const [x0, y0, x1, y1] = region;
     const off = document.createElement('canvas');
-    off.width = Math.round(vp.width);
-    off.height = Math.round(vp.height);
-    v.task = v.page.render({ canvasContext: off.getContext('2d'), viewport: vp, background: '#ffffff' });
+    off.width = Math.max(1, Math.round((x1 - x0) * vp.width));
+    off.height = Math.max(1, Math.round((y1 - y0) * vp.height));
+    v.task?.cancel();
+    v.task = v.page.render({ canvasContext: off.getContext('2d'), viewport: vp, transform: [1, 0, 0, 1, -x0 * vp.width, -y0 * vp.height], background: '#ffffff' });
     try {
       await v.task.promise;
     } catch (err) {
-      if (err?.name === 'RenderingCancelledException') return;
+      if (err?.name === 'RenderingCancelledException') return null;
       throw err;
     }
-    if (seq !== v.seq) return;
-    canvas.width = off.width;
-    canvas.height = off.height;
-    canvas.getContext('2d').drawImage(off, 0, 0);
-    v.rendered = want;
+    return seq === v.seq ? off : null;
+  }
+  async function render() {
+    if (!v.page) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const fitScale = v.W / v.pw; // 화면 맞춤일 때 CSS px / PDF pt
+    const baseScale = Math.min(fitScale * dpr * 2, BASE_CANVAS_PX / v.pw, BASE_CANVAS_PX / v.ph);
+    const seq = ++v.seq;
+    const key = v.key;
+    const baseKey = `${key}@${baseScale.toFixed(2)}`;
+    if (v.rendered !== baseKey) {
+      const off = await draw(baseScale, [0, 0, 1, 1], seq);
+      if (!off || v.key !== key) return;
+      canvas = swapIn(canvas, off, 'pv-canvas');
+      v.rendered = baseKey;
+      detail.hidden = true;
+      detailKey = '';
+    }
+    const want = fitScale * v.z * dpr;
+    if (want <= baseScale * 1.05) { detail.hidden = true; return; }
+    // 보이는 영역(정규 좌표)에 사방 25% 여유
+    const cw = container.clientWidth, ch = container.clientHeight, pw = v.W * v.z, ph = v.H * v.z;
+    let x0 = -v.tx / pw, x1 = (cw - v.tx) / pw, y0 = -v.ty / ph, y1 = (ch - v.ty) / ph;
+    const mx = (x1 - x0) * 0.25, my = (y1 - y0) * 0.25;
+    x0 = Math.max(0, x0 - mx); x1 = Math.min(1, x1 + mx); y0 = Math.max(0, y0 - my); y1 = Math.min(1, y1 + my);
+    if (x1 <= x0 || y1 <= y0) return;
+    const r4 = (n) => n.toFixed(4);
+    const dk = `${key}@${want.toFixed(3)}@${r4(x0)},${r4(y0)},${r4(x1)},${r4(y1)}`;
+    if (dk === detailKey && !detail.hidden) return;
+    const off = await draw(want, [x0, y0, x1, y1], seq);
+    if (!off || v.key !== key) return;
+    detail = swapIn(detail, off, 'pv-detail');
+    Object.assign(detail.style, { left: `${x0 * v.W}px`, top: `${y0 * v.H}px`, width: `${(x1 - x0) * v.W}px`, height: `${(y1 - y0) * v.H}px` });
+    detail.hidden = false;
+    detailKey = dk;
   }
 
   // ---- 표시 항목
@@ -405,6 +510,8 @@ export function createPidView(container, ui) {
       const [fi, p] = key.split(':').map(Number);
       v.key = key;
       v.rendered = '';
+      detail.hidden = true;
+      detailKey = '';
       freeTrace = null;
       v.page = null;
       marks.innerHTML = '';
@@ -463,6 +570,10 @@ export function createPidView(container, ui) {
     },
     setPage,
     prefetch,
+    /** 확대·축소 버튼: 보이는 화면 가운데를 기준으로 */
+    zoomBy(f) {
+      if (v.page) zoomSmooth(f, container.clientWidth / 2, container.clientHeight / 2);
+    },
     highlight,
     fit,
     fitWidth,
@@ -479,6 +590,8 @@ export function createPidView(container, ui) {
       selected = new Set();
       canvas.width = 0;
       canvas.height = 0;
+      detail.hidden = true;
+      detailKey = '';
       marks.innerHTML = '';
       flowSvg.innerHTML = '';
       mainSvg.innerHTML = '';

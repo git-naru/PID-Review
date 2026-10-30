@@ -149,6 +149,12 @@ button { font: inherit; }
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
 .toolbar select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); max-width: 165px; }
 .toolbar label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+/* 확대 / 축소: 공정 Flow 오른쪽 위에 떠 있는 버튼 */
+.zoom-btns { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / 0.12); }
+.zoom-btns[hidden] { display: none; }
+.zoom-btns button { width: 34px; height: 34px; border: 0; background: none; color: var(--text); font-size: 18px; line-height: 1; cursor: pointer; }
+.zoom-btns button + button { border-top: 1px solid var(--border); }
+.zoom-btns button:hover { background: var(--row-hover); }
 /* 공정 단위 · 도면 종류 (PFD / P&ID): 고른 쪽만 색으로 */
 .flow-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .flow-title select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; }
@@ -197,8 +203,9 @@ button { font: inherit; }
 /* 기본 보기: 원본 도면 + 클릭 영역 */
 .pid-view { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; background: var(--viewer-bg); }
 .pid-view.dragging { cursor: grabbing; }
-.pv-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; --z: 1; box-shadow: 0 2px 12px var(--shadow); }
+.pv-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; --z: 1; box-shadow: 0 2px 12px var(--shadow); will-change: transform; }
 .pv-canvas { position: absolute; left: 0; top: 0; background: #fff; }
+.pv-detail { position: absolute; pointer-events: none; }
 .pv-marks { position: absolute; inset: 0; }
 /* 선택한 라인의 도면상 경로(선·화살촉)를 붉게 */
 .pv-flow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
