@@ -76,6 +76,10 @@
 - **Main Stream 체크**: 범례(SYMBOLS)의 "MAIN FLOW" 견본 선과 굵기·색이 같은 선을 주황색(투명도 80%)으로 표시한다. 견본이 없는 도면에서는 표시하지 않는다.
   - 색을 지정하지 않은 선은 PDF 기본색(검정)으로 본다. 0003번은 견본만 색 지정이 없어 누락됐었다.
   - POSCO 0006~0008번은 MAIN FLOW 굵기(2.04)의 공정선이 없어 표시되지 않는 것이 맞다.
+- **이전 / 다음 버튼**: 도면 선택 상자 양옆. 넘길 도면이 없으면 버튼만 회색(비활성), 경고창 없음.
+- **도면 안 물질수지**: 시트 안 스트림 표(H&MB) 값을 판독 때 라인 specs로 옮기고(`shared/prompts.js`), 물질수지 파일이 없으면 `drawingMassBalance()`로 물질수지를 만들어 쓴다(칩 "도면 스트림 표", 검토 항목은 만들지 않음). 파일을 넣으면 파일 우선, 도면 값과의 불일치는 검토 항목.
+  - POSCO PFD의 스트림 표는 JBIG2 그림이다. pdf.js wasm 디코더를 `vendor/pdf-wasm.js`(base64, `scripts/pdf-wasm.mjs`가 생성)로 넣어 기본 보기에서도 표가 보이게 했다(`public/pdfopts.js`).
+  - 도면 표 값은 반올림돼 있어 Li g/L이 물질수지 파일과 조금 다를 수 있다(1101: 도면 0.725, 파일 0.774).
 - **NOTES 문단**: 도면 NOTES 안에서 찾은 스트림 번호에는 유량 등 값을 표시하지 않는다(특이사항 글이므로). Line No. 표식은 남긴다. (`notesRegions`, `shared/pdfGeom.js`)
 - **용어**: Pond 등 도면 용어는 번역하지 않는다("연못" 대신 "Pond"). 판독 지시문(`shared/prompts.js` RULES)과 `doc.json` 요약에도 적용한다.
 
@@ -88,7 +92,7 @@
 - **저장소**: `git-naru/PID-Review`
   - 작업 브랜치는 `claude/sharp-brown-2w1b2p`이다.
   - PR #1, #2 이후 **커밋 약 30개가 `main`에 없다**(PR 미생성).
-  - 테스트 21개가 통과한다.
+  - 테스트 22개가 통과한다.
 - **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
   - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
   - 채팅 분석 페이지에 저장된 데이터
@@ -156,5 +160,5 @@
 | `scripts/apply-massbalance.mjs` | 결과 JSON에 물질수지 적용(단일 HTML용) |
 | `scripts/session/*` | 채팅 분석 단계별 스크립트 |
 | `samples/` | 샘플 범례 1장 + P&ID 2장, 데모 결과, 샘플 물질수지(`PID-100-MB.xlsx/.csv`) |
-| `test/postprocess.test.js`, `test/massbalance.test.js` | 테스트 21개(후처리·병합·경로 추적·물질수지·Li) |
+| `test/postprocess.test.js`, `test/massbalance.test.js` | 테스트 22개(후처리·병합·경로 추적·물질수지·Li) |
 | `README.md` | 사용법 전체 |
