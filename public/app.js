@@ -88,6 +88,7 @@ async function init() {
       setRunAction: (fn) => { runAction = fn; },
       setDownloads: (d) => { runtime.downloads = d; },
       setMassBalance: (mb, opts) => setMassBalance(mb, opts),
+      setSearchData: (slot, result) => { searchOnly.set(slot, result); if (!$('#flowSearchList').hidden) renderSearch(); },
     });
     runtime.chat.setSlot(slotKey());
     return;
@@ -617,6 +618,12 @@ function applyResult(result, sources, slot = null) {
   renderList();
   renderIssues();
   renderDetail();
+  // 검색에서 다른 도면 종류의 항목을 골라 넘어온 경우: 이제 선택 (setSlot이 보관했던 선택을 되돌린 뒤에)
+  if (pendingPick?.slot === slotKey()) {
+    const { sel } = pendingPick;
+    pendingPick = null;
+    setTimeout(() => revealPick(sel), 0);
+  }
 }
 
 function pagesOf(result) {
@@ -784,8 +791,10 @@ function setSlot(unit, doc) {
 
 function markSlot() {
   $('#unitSelect').value = state.unit;
-  closeSearch(true);
-  $('#flowSearch').placeholder = `${slotLabel()} Stream·설비 검색`;
+  // 검색은 공정 단위 전체(PFD·P&ID)라 단위가 바뀔 때만 비운다
+  if (search.unit !== state.unit) closeSearch(true);
+  search.unit = state.unit;
+  $('#flowSearch').placeholder = `${state.unit} Stream·설비 검색 (PFD·P&ID)`;
   document.querySelectorAll('#docPick [data-doc]').forEach((b) => {
     b.classList.toggle('active', b.dataset.doc === state.doc);
     b.setAttribute('aria-pressed', String(b.dataset.doc === state.doc));
@@ -1137,14 +1146,39 @@ window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',
 new MutationObserver(() => cy?.style(flowStyle())).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 // ------------------------------------------------------------------ Stream·설비 검색
-// 공정 Flow 제목 옆. 지금 고른 공정 단위·PFD / P&ID의 결과 안에서만 찾는다(묶음을 바꾸면 검색어를 비움).
-// 설비·계기·밸브는 태그·명칭, 라인은 Line No.·스트림 번호·Service. 똑같음 > 앞부분 같음 > 포함 순.
-const search = { items: [], active: -1 };
+// 공정 Flow 제목 옆. 지금 고른 공정 단위의 PFD와 P&ID 결과를 함께 찾는다(단위를 바꾸면 검색어를 비움).
+// 설비·계기·밸브는 태그·명칭, 라인은 Line No.·스트림 번호·Service. 똑같음 > 앞부분 같음 > 포함 순, 같으면 지금 보는 쪽 먼저.
+// 다른 쪽(PFD↔P&ID) 항목을 고르면 그 도면 종류로 넘어간 뒤 선택한다.
+const search = { items: [], active: -1, unit: null };
+const searchOnly = new Map(); // 묶음 키 → 검색용 결과 (채팅 분석: 아직 열지 않은 같은 단위의 다른 도면 종류)
+let pendingPick = null; // {slot, sel}: 도면 종류를 바꾼 뒤 결과가 표시되면 선택
+
+/** 지금 공정 단위의 PFD·P&ID 결과 (없는 쪽은 빠짐) */
+function unitResults() {
+  return ['pfd', 'pid'].map((doc) => {
+    const key = slotKey(state.unit, doc);
+    const result = key === slotKey() ? state.result : (slots.get(key)?.result || searchOnly.get(key) || null);
+    return result && { doc, key, result };
+  }).filter(Boolean);
+}
+
+const nameMaps = new WeakMap();
+function nameIn(result, id) {
+  if (!nameMaps.has(result)) nameMaps.set(result, new Map(result.nodes.map((n) => [n.id, n.tag || n.name || n.id])));
+  return nameMaps.get(result).get(id) || '';
+}
 
 function searchItems(q) {
-  const r = state.result;
   const Q = q.trim().toUpperCase();
-  if (!r || !Q) return [];
+  if (!Q) return [];
+  return unitResults().flatMap(({ doc, key, result }) => searchIn(result, Q, doc, key))
+    .sort((a, b) => b.sc - a.sc || String(a.label).localeCompare(String(b.label), 'ko', { numeric: true })).slice(0, 50);
+}
+
+function searchIn(r, Q, doc, key) {
+  const here = key === slotKey() ? 0.2 : 0;
+  const tag = doc === 'pid' ? 'P&ID' : 'PFD';
+  const pfd = r.doc_type === 'pfd';
   const score = (fields) => {
     let best = 0;
     for (const f of fields) {
@@ -1159,16 +1193,16 @@ function searchItems(q) {
   for (const n of r.nodes) {
     if (!['equipment', 'instrument', 'valve'].includes(n.category)) continue;
     const sc = score([n.tag, n.name]);
-    if (sc) out.push({ sc: sc + (n.category === 'equipment' ? 0.5 : 0), sel: { type: 'node', id: n.id }, kind: CATEGORY_LABEL[n.category], label: n.tag || n.name, sub: n.tag ? n.name : '' });
+    if (sc) out.push({ sc: sc + here + (n.category === 'equipment' ? 0.5 : 0), slot: key, doc: tag, sel: { type: 'node', id: n.id }, kind: CATEGORY_LABEL[n.category], label: n.tag || n.name, sub: n.tag ? n.name : '' });
   }
   for (const l of r.lines) {
     if (l.kind === 'signal') continue;
     const sc = score([l.line_no, l.stream_no, l.service]);
     if (!sc) continue;
     const no = l.line_no || l.stream_no;
-    out.push({ sc: sc + (no ? 0.4 : 0), sel: { type: 'line', id: l.id }, kind: isPfd() ? 'Stream' : '배관', label: no || '(번호 없음)', sub: `${nodeName(l.from_id) || '?'} → ${nodeName(l.to_id) || '?'}${l.service ? ` · ${l.service}` : ''}` });
+    out.push({ sc: sc + here + (no ? 0.4 : 0), slot: key, doc: tag, sel: { type: 'line', id: l.id }, kind: pfd ? 'Stream' : '배관', label: no || '(번호 없음)', sub: `${nameIn(r, l.from_id) || '?'} → ${nameIn(r, l.to_id) || '?'}${l.service ? ` · ${l.service}` : ''}` });
   }
-  return out.sort((a, b) => b.sc - a.sc || String(a.label).localeCompare(String(b.label), 'ko', { numeric: true })).slice(0, 40);
+  return out;
 }
 
 function renderSearch() {
@@ -1181,12 +1215,13 @@ function renderSearch() {
     const s = String(t ?? ''), i = s.toUpperCase().indexOf(q.toUpperCase());
     return i < 0 ? esc(s) : `${esc(s.slice(0, i))}<mark>${esc(s.slice(i, i + q.length))}</mark>${esc(s.slice(i + q.length))}`;
   };
-  const mbHint = state.result?.mass_balance && /[,;]/.test(q) ? '<li class="empty">Enter: 쉼표로 넣은 스트림을 물질수지 표로 비교</li>' : '';
-  list.innerHTML = !state.result
-    ? `<li class="empty">${esc(slotLabel())} 자료가 아직 없습니다.</li>`
+  const mbHint = state.result?.mass_balance && /[,;]/.test(q) ? '<li class="empty">Enter: 쉼표로 넣은 Stream을 물질수지 표로 비교</li>' : '';
+  const scope = unitResults().map((x) => (x.doc === 'pid' ? 'P&ID' : 'PFD')).join('·');
+  list.innerHTML = !scope
+    ? `<li class="empty">${esc(state.unit)} 자료가 아직 없습니다.</li>`
     : (search.items.length
-      ? search.items.map((it, i) => `<li role="option" data-i="${i}" class="${i === search.active ? 'active' : ''}"><span class="kind">${esc(it.kind)}</span><span class="lbl">${hl(it.label)}</span><span class="sub">${hl(it.sub)}</span></li>`).join('')
-      : `<li class="empty">${esc(slotLabel())}에서 찾지 못했습니다.</li>`) + mbHint;
+      ? search.items.map((it, i) => `<li role="option" data-i="${i}" class="${i === search.active ? 'active' : ''}"><span class="kind"><b class="doc ${it.doc === 'PFD' ? 'pfd' : 'pid'}">${esc(it.doc)}</b> ${esc(it.kind)}</span><span class="lbl">${hl(it.label)}</span><span class="sub">${hl(it.sub)}</span></li>`).join('')
+      : `<li class="empty">${esc(state.unit)} ${esc(scope)}에서 찾지 못했습니다.</li>`) + mbHint;
   list.hidden = false;
   input.setAttribute('aria-expanded', 'true');
 }
@@ -1206,14 +1241,24 @@ function pickSearch(i) {
   if (!it) return;
   closeSearch();
   $('#flowSearch').blur();
-  select(it.sel, 'search');
+  if (it.slot !== slotKey()) {
+    // 다른 도면 종류(PFD↔P&ID): 넘어가서 결과가 표시되면 선택 (applyResult 끝에서)
+    pendingPick = { slot: it.slot, sel: it.sel };
+    setSlot(state.unit, it.slot.endsWith('-PID') ? 'pid' : 'pfd');
+    return;
+  }
+  revealPick(it.sel);
+}
+
+function revealPick(sel) {
+  select(sel, 'search');
   // 같은 도면에 있으면 그 위치로 부드럽게 옮긴다 (다른 도면이면 select가 그 도면으로 넘어간다)
-  if (state.flowMode === 'basic') pv.reveal(it.sel.type === 'node' || it.sel.type === 'line' ? [it.sel.id] : []);
+  if (state.flowMode === 'basic') pv.reveal([sel.id]);
 }
 
 function bindSearch() {
   const input = $('#flowSearch'), list = $('#flowSearchList');
-  input.placeholder = `${slotLabel()} Stream·설비 검색`;
+  input.placeholder = `${state.unit} Stream·설비 검색 (PFD·P&ID)`;
   let t = null;
   input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(renderSearch, 120); });
   input.addEventListener('focus', () => { if (input.value.trim()) renderSearch(); });
@@ -1353,6 +1398,7 @@ function renderDetail() {
   else if (sel.type === 'free') box.innerHTML = freeDetail();
   else box.innerHTML = issueDetail(issueById(sel.id));
 
+  box.querySelectorAll('[data-mb]').forEach((el) => el.addEventListener('click', () => lookupMassBalance(el.dataset.mb)));
   box.querySelectorAll('[data-go]').forEach((el) => el.addEventListener('click', () => {
     const [type, ...rest] = el.dataset.go.split(':');
     select({ type, id: rest.join(':') });
@@ -1378,6 +1424,10 @@ function openItem(type, id) {
 
 const goNode = (id) => (id ? `<button class="link" data-go="node:${esc(id)}">${esc(nodeName(id))}</button>` : '<span class="warn" style="color:var(--high)">연결처 없음</span>');
 const goLine = (l) => `<button class="link" data-go="line:${esc(l.id)}">${esc(l.line_no || l.id)}</button>`;
+/** "Stream 1300": 물질수지가 있으면 누르면 그 Stream의 물질수지 표 창(검색 Enter와 같은 창)을 연다 */
+const streamLink = (id, text = `Stream ${id}`) => (state.result?.mass_balance
+  ? `<button class="link mb-open" data-mb="${esc(id)}" title="Stream ${esc(id)} 물질수지 표 보기">${esc(text)}</button>`
+  : esc(text));
 const locText = (loc) => (loc ? `${esc(drawingLabel(loc))} (${loc.source === 'text' ? '텍스트 위치 확인' : loc.source === 'model' ? 'AI 추정 위치' : '위치 정보 없음'})` : '-');
 
 function issuesBlock(ids) {
@@ -1416,7 +1466,7 @@ function lineDetail(l) {
   const st = state.result.mass_balance ? state.lineStream.get(l.id) : null;
   return `${st ? lithiumBox(st) : ''}
     <span class="badge line">${KIND_LABEL[l.kind]} ${pfd ? '스트림' : '배관'}</span>
-    <h3>${esc(l.line_no ? (pfd ? `스트림 ${l.line_no}` : l.line_no) : pfd ? '(번호 없는 연결)' : '(라인 번호 없음)')}</h3>
+    <h3>${l.line_no ? (pfd ? streamLink(st ? st.id : l.line_no, `Stream ${l.line_no}`) : esc(l.line_no)) : pfd ? '(번호 없는 연결)' : '(라인 번호 없음)'}</h3>
     <p class="sub">${esc(l.service)}</p>
     <table class="kv">
       <tr><th>From</th><td>${goNode(l.from_id)}</td></tr>
@@ -1510,7 +1560,7 @@ function mbTableRows(streams) {
 function openMbTable(streams) {
   const mbx = state.result.mass_balance;
   mbTableState = { streams, rows: mbTableRows(streams) };
-  $('#mbTitle').textContent = `물질수지 · 스트림 ${streams.map((st) => st.id).join(', ')}`;
+  $('#mbTitle').textContent = `물질수지 · Stream ${streams.map((st) => st.id).join(', ')}`;
   const sheets = [...new Set(streams.map((st) => st.sheet).filter(Boolean))];
   $('#mbSub').textContent = `${mbx.name}${sheets.length ? ` · ${sheets.join(', ')}` : ''}${mbTableState.rows.some((r) => r.kind === 'li' && r.vals.some((v) => v.endsWith('*'))) ? ' · * 슬러리: 스트림 1 L당 용존 Li' : ''}`;
   $('#mbTable').innerHTML = `<thead><tr><th>항목</th><th>단위</th>${streams.map((st) => `<th>${esc(st.id)}<span class="desc">${esc(st.description)}</span></th>`).join('')}</tr></thead><tbody>${
@@ -1544,7 +1594,7 @@ function lithiumBox(st) {
   const basis = li.basis === 'liquid' ? '액상 기준'
     : li.basis === 'stream' ? `고형분 ${formatValue(li.solidsPct)}% 슬러리라 스트림 1 L당 용존 Li로 계산` : '';
   return `<div class="li-box">
-    <div class="li-head"><span>Li 농도 <span class="muted">(스트림 ${esc(st.id)})</span></span><b>${fmt(li.gpl)} g/L</b></div>
+    <div class="li-head"><span>Li 농도 <span class="muted">(${streamLink(st.id)})</span></span><b>${fmt(li.gpl)} g/L</b></div>
     <div class="li-sub">${esc(how)}${basis ? `<br>${esc(basis)}` : ''}</div>
     ${li.totalGpl != null ? `<div class="li-sub">고상 리튬 화합물 포함 총 Li <b>${fmt(li.totalGpl)} g/L</b></div>` : ''}
   </div>`;
@@ -1556,7 +1606,7 @@ function massBalanceBlock(l) {
   const st = state.lineStream.get(l.id);
   if (!st) return '<h4>물질수지</h4><p class="muted">매칭된 물질수지 스트림이 없습니다.</p>';
   const m = mbx.matches.find((x) => x.line_id === l.id);
-  return `<h4>물질수지 · <button class="link" data-go="stream:${esc(st.id)}">스트림 ${esc(st.id)}</button> <span class="muted">(${esc(matchMethodLabel(m?.method))}로 매칭)</span></h4>
+  return `<h4>물질수지 · ${streamLink(st.id)} <span class="muted">(${esc(matchMethodLabel(m?.method))}로 매칭)</span></h4>
     ${st.description ? `<p class="sub">${esc(st.description)}</p>` : ''}${streamValuesTable(st)}`;
 }
 
@@ -1566,8 +1616,8 @@ function streamDetail(st) {
   const lines = mbLinesOf(st.id);
   const method = (id) => matchMethodLabel(mbx.matches.find((x) => x.line_id === id && x.stream_id === st.id)?.method);
   return `${lithiumBox(st)}
-    <span class="badge line">물질수지 스트림</span>
-    <h3>스트림 ${esc(st.id)}</h3>
+    <span class="badge line">물질수지 Stream</span>
+    <h3>${streamLink(st.id)}</h3>
     <p class="sub">${esc(st.description)}</p>
     <table class="kv">
       ${st.from ? `<tr><th>From</th><td>${esc(st.from)}</td></tr>` : ''}

@@ -148,6 +148,22 @@ export async function setupChatMode(ui) {
     renderJob();
     renderFiles();
     if (job?.resultAsset && job.resultAsset !== loadedResult.get(slot)) loadResult(slot, job.resultAsset);
+    // 검색은 같은 공정 단위의 PFD와 P&ID를 함께 찾으므로, 다른 쪽 결과도 JSON만 미리 받아 둔다(도면 PDF는 넘어갈 때)
+    const sib = slot.replace(/-(PFD|PID)$/, (m, d) => (d === 'PFD' ? '-PID' : '-PFD'));
+    const sj = jobs.get(sib);
+    if (sj?.resultAsset && sj.resultAsset !== searchLoaded.get(sib) && sj.resultAsset !== loadedResult.get(sib)) loadSearchData(sib, sj.resultAsset);
+  }
+
+  const searchLoaded = new Map();
+  async function loadSearchData(at, resultAsset) {
+    searchLoaded.set(at, resultAsset);
+    try {
+      const res = await fetch(`/_blob/${resultAsset}`);
+      if (!res.ok) throw new Error(String(res.status));
+      ui.setSearchData?.(at, await res.json());
+    } catch {
+      searchLoaded.delete(at); // 검색에서만 빠진다 (그 묶음을 고르면 평소대로 불러옴)
+    }
   }
 
   function renderJob() {
