@@ -316,6 +316,8 @@ button { font: inherit; }
 .grid tbody tr.selected { background: var(--primary-weak); }
 .grid tbody tr.flag td:first-child { box-shadow: inset 3px 0 0 var(--high); }
 .grid .empty-row td { text-align: center; color: var(--muted); cursor: default; }
+.grid tbody tr.vpad { cursor: default; background: none; }
+.grid tbody tr.vpad td { padding: 0; border: 0; }
 .grid .tag { font-weight: 600; font-family: var(--font-mono); font-size: 12.5px; }
 .grid .warn { color: var(--high); font-weight: 700; }
 .issues td .desc { color: var(--muted); margin-left: 6px; }

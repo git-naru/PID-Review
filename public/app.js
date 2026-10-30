@@ -10,6 +10,8 @@ import {
 } from './shared/massbalance.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
+// 보기 전용 단일 HTML: 파일 안의 워커 코드로 띄운 워커가 준비되면 그것을 쓴다 (set-pdf-worker.js). 그 외에는 바로 준비됨
+const pdfWorkerReady = Promise.resolve(globalThis.pidPdfWorker).then((w) => { if (w) pdfjsLib.GlobalWorkerOptions.workerPort = w; });
 
 const DEFAULT_UNIT = 'BL3U';
 const DEFAULT_SLOT = `${DEFAULT_UNIT}-PFD`; // 처음 화면이자, 단위 구분 전에 올린 자료가 속하는 묶음
@@ -885,6 +887,14 @@ function updatePager() {
   $('#btnNext').disabled = !state.result || i < 0 || i >= opts.length - 1;
 }
 
+/** 기본 보기: 지금 도면의 이전·다음 도면을 미리 읽어 둔다 */
+function prefetchNeighbors() {
+  const opts = pageOptions();
+  const i = opts.findIndex((o) => o.value === $('#drawingFilter').value);
+  if (i < 0) return;
+  for (const o of [opts[i + 1], opts[i - 1]]) if (o && o.value !== 'all') pv.prefetch(o.value);
+}
+
 function stepPage(step) {
   const opts = pageOptions();
   const next = opts[opts.findIndex((o) => o.value === $('#drawingFilter').value) + step];
@@ -911,6 +921,7 @@ function renderFlow() {
     const reload = state.pvSources !== state.sources;
     state.pvSources = state.sources;
     pv.show(state.result, $('#drawingFilter').value, reload);
+    prefetchNeighbors();
     return;
   }
   renderCy();
@@ -1018,6 +1029,7 @@ function applyFlowFilter() {
   updatePager();
   if (state.flowMode === 'basic') {
     pv.setPage($('#drawingFilter').value);
+    prefetchNeighbors();
     return;
   }
   if (!cy) return;
@@ -1631,11 +1643,13 @@ function renderList() {
   table.querySelector('thead').innerHTML = `<tr>${cols.map(([h, w]) => `<th${w ? ` style="width:${w}px"` : ''}>${esc(h)}</th>`).join('')}</tr>`;
   const tbody = table.querySelector('tbody');
   if (!state.result) {
+    virtualRows(tbody, null);
     tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">분석 결과가 없습니다.</td></tr>`;
   } else if (!rows.length) {
+    virtualRows(tbody, null);
     tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols.length}">${q ? '검색 결과가 없습니다.' : '항목이 없습니다.'}</td></tr>`;
   } else {
-    tbody.innerHTML = rows.map((r, i) => `<tr data-type="${def.type}" data-id="${esc(r.id)}" class="${r.issue_ids.length || r.flag ? 'flag' : ''}" title="${esc(def.title(r) || '')}">${def.cells(r, i).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
+    virtualRows(tbody, rows, (r, i) => `<tr data-type="${def.type}" data-id="${esc(r.id)}" class="${r.issue_ids.length || r.flag ? 'flag' : ''}" title="${esc(def.title(r) || '')}">${def.cells(r, i).map((c) => `<td>${c}</td>`).join('')}</tr>`, cols.length);
   }
   $('#listHint').textContent = `총 ${rows.length}건${rows.length > 10 ? ' — 10건씩 표시되며, 나머지는 스크롤하여 확인하세요.' : ''} 클릭: 상세 정보 / 더블클릭: 도면 위치 보기`;
   bindRows(tbody);
@@ -1652,11 +1666,13 @@ function renderIssues() {
   $('#cntLow').textContent = s.low;
   const rows = state.sev === 'all' ? all : all.filter((i) => i.severity === state.sev);
   if (!state.result) {
+    virtualRows(tbody, null);
     tbody.innerHTML = '<tr class="empty-row"><td colspan="5">분석 결과가 없습니다.</td></tr>';
   } else if (!rows.length) {
+    virtualRows(tbody, null);
     tbody.innerHTML = '<tr class="empty-row"><td colspan="5">검토 필요 항목이 없습니다.</td></tr>';
   } else {
-    tbody.innerHTML = rows.map((i) => {
+    virtualRows(tbody, rows, (i) => {
       const rel = i.related_ids.map((id) => nodeName(id) || lineById(id)?.line_no || id).join(', ');
       return `<tr data-type="issue" data-id="${esc(i.id)}" title="${esc(i.description)}">
         <td><span class="badge ${i.severity}">${SEV_LABEL[i.severity]}</span></td>
@@ -1664,18 +1680,63 @@ function renderIssues() {
         <td><b>${esc(i.title)}</b><span class="desc">${esc(i.description)}</span></td>
         <td class="tag">${esc(rel) || '-'}</td>
         <td>${esc(drawingLabel(i.loc))}</td></tr>`;
-    }).join('');
+    }, 5);
   }
   bindRows(tbody);
   markSelectedRows();
 }
 
+/** 줄 클릭·더블클릭은 tbody 하나에서 받는다 (줄은 스크롤할 때마다 다시 만들어짐) */
 function bindRows(tbody) {
-  tbody.querySelectorAll('tr[data-id]').forEach((tr) => {
-    const { type, id } = tr.dataset;
-    tr.addEventListener('click', () => select({ type, id }, 'list'));
-    tr.addEventListener('dblclick', () => openItem(type, id));
-  });
+  if (tbody.dataset.bound) return;
+  tbody.dataset.bound = '1';
+  const row = (e) => e.target.closest('tr[data-id]');
+  tbody.addEventListener('click', (e) => { const tr = row(e); if (tr) select({ type: tr.dataset.type, id: tr.dataset.id }, 'list'); });
+  tbody.addEventListener('dblclick', (e) => { const tr = row(e); if (tr) openItem(tr.dataset.type, tr.dataset.id); });
+}
+
+/**
+ * 긴 리스트는 보이는 줄(앞뒤 여유 30줄)만 만들고 나머지는 빈 줄 높이로 채운다.
+ * 수천 줄을 한꺼번에 만들면 결과를 열 때 몇 초씩 걸린다. 줄 높이는 고정(--row-h)이라 위치를 계산할 수 있다.
+ */
+const vrows = new WeakMap();
+function virtualRows(tbody, items, rowHtml, colspan) {
+  let st = vrows.get(tbody);
+  if (!st) {
+    st = { raf: 0, rh: 0 };
+    vrows.set(tbody, st);
+    tbody.closest('.table-scroll').addEventListener('scroll', () => {
+      if (st.items && !st.raf) st.raf = requestAnimationFrame(() => { st.raf = 0; drawRows(tbody, st); });
+    });
+  }
+  // 목록이 바뀌면(검색·탭·필터) 맨 위부터. 같은 목록을 다시 그릴 때(선택 등)는 보던 위치 유지
+  const sig = items ? `${items.length}:${items[0]?.id}:${items.at(-1)?.id}` : '';
+  if (sig !== st.sig) tbody.closest('.table-scroll').scrollTop = 0;
+  Object.assign(st, { items, rowHtml, colspan, range: '', sig });
+  if (items) drawRows(tbody, st);
+}
+
+function drawRows(tbody, st) {
+  const box = tbody.closest('.table-scroll');
+  const rh = st.rh || 36;
+  const n = st.items.length;
+  const view = box.clientHeight || rh * 10;
+  const top = Math.min(box.scrollTop, Math.max(0, n * rh - view));
+  const from = Math.max(0, Math.floor(top / rh) - 30);
+  const to = Math.min(n, Math.ceil((top + view) / rh) + 30);
+  if (st.range === `${from}:${to}`) return;
+  st.range = `${from}:${to}`;
+  const pad = (h) => (h > 0 ? `<tr class="vpad" aria-hidden="true" style="height:${h}px"><td colspan="${st.colspan}"></td></tr>` : '');
+  tbody.innerHTML = pad(from * rh) + st.items.slice(from, to).map((r, k) => st.rowHtml(r, from + k)).join('') + pad((n - to) * rh);
+  if (!st.rh) {
+    // 실제 줄 높이를 한 번 재서 맞춘다 (숨겨져 있으면 0이라 다음에 다시 잰다)
+    const h = tbody.querySelector('tr[data-id]')?.getBoundingClientRect().height;
+    if (h) {
+      st.rh = h;
+      if (Math.abs(h - rh) > 0.5) { st.range = ''; drawRows(tbody, st); return; }
+    }
+  }
+  markSelectedRows();
 }
 
 function markSelectedRows() {
@@ -1757,8 +1818,14 @@ function getPdf(fileIndex) {
   if (!state.pdfDocs.has(fileIndex)) {
     const src = state.sources[fileIndex];
     if (!src) return Promise.reject(new Error('원본 PDF를 찾을 수 없습니다.'));
-    // pdf.js가 버퍼를 워커로 넘기므로 사본 전달
-    state.pdfDocs.set(fileIndex, pdfjsLib.getDocument({ data: src.slice(0), ...PDF_OPTIONS }));
+    // pdf.js가 버퍼를 워커로 넘기므로 사본 전달. 워커 준비를 기다리는 동안 닫혀도(destroy) 되도록 감싼다
+    const task = { inner: null, closed: false, destroy() { task.closed = true; return task.inner?.destroy(); } };
+    task.promise = pdfWorkerReady.then(() => {
+      if (task.closed) throw new Error('도면 보기가 닫혔습니다.');
+      task.inner = pdfjsLib.getDocument({ data: src.slice(0), ...PDF_OPTIONS });
+      return task.inner.promise;
+    });
+    state.pdfDocs.set(fileIndex, task);
   }
   return state.pdfDocs.get(fileIndex).promise;
 }

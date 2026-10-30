@@ -370,6 +370,35 @@ export function createPidView(container, ui) {
     flowSvg.innerHTML = parts.join('');
   }
 
+  // 최근에 연 도면 몇 장만 pdf.js 해석 결과(연산 목록)를 남기고, 나머지는 비워 메모리를 아낀다
+  const warmPages = new Map();
+  function keepWarm(key, page) {
+    warmPages.delete(key);
+    warmPages.set(key, page);
+    for (const [k, pg] of warmPages) {
+      if (warmPages.size <= 5) break;
+      if (k === v.key) continue;
+      warmPages.delete(k);
+      pg.cleanup();
+    }
+  }
+
+  /** 이전·다음 도면을 미리 읽어 둔다: pdf.js 해석(워커)과 선 데이터. 넘길 때 그리기만 하면 된다 */
+  function prefetch(key) {
+    if (!v.result || !key || key === 'all' || geoms.has(key)) return;
+    const [fi, p] = key.split(':').map(Number);
+    setTimeout(() => {
+      if (geoms.has(key) || !v.result) return;
+      ui.getPdf(fi).then((doc) => doc.getPage(p)).then((page) => {
+        if (geoms.has(key)) return;
+        keepWarm(key, page);
+        page.getOperatorList().catch(() => {}); // 화면 그리기용 연산 목록 (render가 같은 것을 다시 쓴다)
+        geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
+        textOf(page, key);
+      }).catch(() => {});
+    }, 600);
+  }
+
   async function setPage(key) {
     if (!v.result || !key || key === 'all') return;
     if (key !== v.key) {
@@ -386,6 +415,7 @@ export function createPidView(container, ui) {
         const page = await doc.getPage(p);
         if (v.key !== key) return;
         v.page = page;
+        keepWarm(key, page);
         if (!geoms.has(key)) geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
         readyGeom = null;
         mainSvg.innerHTML = '';
@@ -428,10 +458,11 @@ export function createPidView(container, ui) {
       v.result = result;
       traces.clear();
       if (readyGeom) warm();
-      if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); }
+      if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); warmPages.clear(); }
       return setPage(key);
     },
     setPage,
+    prefetch,
     highlight,
     fit,
     fitWidth,
@@ -442,7 +473,7 @@ export function createPidView(container, ui) {
       v.seq++;
       v.task?.cancel();
       Object.assign(v, { result: null, key: null, page: null, rendered: '' });
-      views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear();
+      views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); warmPages.clear();
       readyGeom = null;
       freeTrace = null;
       selected = new Set();

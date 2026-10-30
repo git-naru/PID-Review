@@ -69,13 +69,20 @@ const html = await fs.readFile(path.join(ROOT, 'public/index.html'), 'utf8');
 const css = await fs.readFile(path.join(ROOT, 'public/styles.css'), 'utf8');
 const cy = await fs.readFile(path.join(ROOT, 'node_modules/cytoscape/dist/cytoscape.min.js'), 'utf8');
 const cyDagre = await fs.readFile(path.join(ROOT, 'node_modules/cytoscape-dagre/dist/cytoscape-dagre.js'), 'utf8');
+// pdf.js 워커 코드: 페이지가 이 글을 Blob으로 만들어 별도 워커로 띄운다 (set-pdf-worker.js).
+// 파일로 연 페이지에서는 모듈 워커를 띄울 수 없어(origin "null") 일반 스크립트(iife)로 바꿔 넣는다.
+const pdfWorker = (await esbuild.build({
+  entryPoints: [path.join(ROOT, 'node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs')],
+  bundle: true, format: 'iife', globalName: 'pdfjsWorkerModule', minify: true, write: false, logLevel: 'error',
+  define: { 'import.meta.url': 'self.location.href' },
+})).outputFiles[0].text;
 const title = `P&amp;ID Review — ${fileCount}개 도면 분석 결과`;
 let page = html
   .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
   .replace('<link rel="stylesheet" href="styles.css" />', () => `<style>\n${css}</style>`)
   .replace('<script src="vendor/cytoscape.min.js"></script>', () => `<script>${noClose(cy)}</script>`)
   .replace('<script src="vendor/cytoscape-dagre.js"></script>', () => `<script>${noClose(cyDagre)}</script>`)
-  .replace('<script type="module" src="app.js"></script>', () => `<script type="application/json" id="pid-static">${data}</script>\n  ${pdfTags.join('\n  ')}\n  <script type="module">${noClose(appJs)}</script>`);
+  .replace('<script type="module" src="app.js"></script>', () => `<script type="application/json" id="pid-static">${data}</script>\n  ${pdfTags.join('\n  ')}\n  <script type="text/plain" id="pid-pdf-worker">${noClose(pdfWorker)}</script>\n  <script type="module">${noClose(appJs)}</script>`);
 for (const needle of ['href="styles.css"', 'src="vendor/', 'src="app.js"']) {
   if (page.includes(needle)) throw new Error(`인라인 처리되지 않은 참조: ${needle}`);
 }
