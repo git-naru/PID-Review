@@ -93,7 +93,7 @@
 - **저장소**: `git-naru/PID-Review`
   - 작업 브랜치는 `claude/sharp-brown-2w1b2p`이다.
   - PR #1, #2 이후 **커밋 약 30개가 `main`에 없다**(PR 미생성).
-  - 테스트 22개가 통과한다.
+  - 테스트 23개가 통과한다.
 - **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
   - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
   - 채팅 분석 페이지에 저장된 데이터
@@ -105,6 +105,11 @@
   - 새 검토 항목 2건
     - 스트림 1090 % Moisture가 도면 100.0, 물질수지 0으로 다르다.
     - 도면 스트림 1095는 물질수지에 없다.
+- **BL2U · PFD 38장 분석 완료** (Sal de Oro Project Stage 2, `319020-00265-*`, `319020-00367-*`)
+  - 결과: 설비 795, 스트림/라인 1,374, 도면 스트림 표 439개(전부 매칭, Li g/L 336개), 검토 항목 491건(높음 91)
+  - db `jobs/BL2U-PFD`: `status: done`, 결과 asset `ffce338683df9f070eb2282ece50af86`, PDF 38개는 결과 JSON `files[].assetId`
+  - 물질수지 파일 없이 도면 스트림 표로 물질수지를 쓴다. 시트마다 항목 이름이 조금씩 달라 표시 값 목록이 길다(정리 필요).
+  - 보낸 파일: `BL2U_PFD_분석결과.html` (`build-standalone.mjs … BL2U-PFD`)
 - **사용자에게 보낸 결과 HTML**: `POSCO_CP3_PFD_분석결과.html`(물질수지 포함, 최신 화면 기능)
 - **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
 
@@ -125,13 +130,13 @@
 8. **병합**: `node scripts/session/assemble.mjs <work>`를 실행하면 `result.json`이 생긴다.
 9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 준다.
 10. **완료 표시**: `jobs/<문서>`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
-11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html>`
+11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html> <묶음 키, 예: BL2U-PFD>` (묶음 키를 주면 그 단위·종류로 열린다)
 
 **POSCO 결과 HTML 다시 만들기** (새 세션)
 1. 결과 asset `beb65a8b…`과 PDF asset 8개, 물질수지 asset `1f5619f3…`을 `Artifact read`로 받는다.
 2. PDF는 원래 파일명으로 한 폴더에 둔다.
 3. `node scripts/apply-massbalance.mjs result.json mb.json result-mb.json`
-4. `node scripts/build-standalone.mjs result-mb.json <PDF 폴더> POSCO_CP3_PFD_분석결과.html`
+4. `node scripts/build-standalone.mjs result-mb.json <PDF 폴더> POSCO_CP3_PFD_분석결과.html BL3U-PFD`
 
 ## 5. 남은 할 일
 1. **PR 생성·머지**: 미머지 커밋을 `main`에 반영한다(사용자 요청 시).
@@ -161,5 +166,5 @@
 | `scripts/apply-massbalance.mjs` | 결과 JSON에 물질수지 적용(단일 HTML용) |
 | `scripts/session/*` | 채팅 분석 단계별 스크립트 |
 | `samples/` | 샘플 범례 1장 + P&ID 2장, 데모 결과, 샘플 물질수지(`PID-100-MB.xlsx/.csv`) |
-| `test/postprocess.test.js`, `test/massbalance.test.js` | 테스트 22개(후처리·병합·경로 추적·물질수지·Li) |
+| `test/postprocess.test.js`, `test/massbalance.test.js` | 테스트 23개(후처리·병합·경로 추적·물질수지·Li) |
 | `README.md` | 사용법 전체 |

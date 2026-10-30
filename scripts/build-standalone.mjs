@@ -1,5 +1,5 @@
 // 분석 결과와 도면 PDF를 모두 넣은 단일 HTML(보기 전용)을 만든다. 서버·인터넷 없이 PC에서 열어 볼 수 있다.
-// 사용법: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html>
+// 사용법: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html> [공정 단위-도면 종류, 예: BL2U-PFD]
 //   pdf-dir 안에서 result.files[i].name과 같은 이름의 PDF를 찾는다.
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import * as esbuild from 'esbuild';
 import { pdfWasmModuleSource } from './pdf-wasm.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const [resultPath, pdfDir, outPath] = process.argv.slice(2);
+const [resultPath, pdfDir, outPath, slot = ''] = process.argv.slice(2);
 if (!resultPath || !pdfDir || !outPath) {
   console.error('usage: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html>');
   process.exit(1);
@@ -38,7 +38,7 @@ const pdfs = [];
 for (const f of result.files) {
   pdfs.push((await fs.readFile(path.join(pdfDir, f.name))).toString('base64'));
 }
-const data = JSON.stringify({ result, pdfs }).replace(/<\//g, '<\\/');
+const data = JSON.stringify({ result, pdfs, slot: slot.toUpperCase() }).replace(/<\//g, '<\\/');
 
 // 3) 페이지: 스타일·스크립트를 모두 인라인
 const noClose = (code) => code.replace(/<\/script/gi, '<\\/script');

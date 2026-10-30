@@ -126,6 +126,13 @@ function initStatic(notice) {
   notice.hidden = false;
   notice.className = 'notice info';
   notice.textContent = `보기 전용 파일입니다${when ? ` (분석 ${when})` : ''}. 도면 ${data.result.files.length}개와 분석 결과가 이 파일 안에 들어 있어 인터넷 없이 열 수 있습니다. 새 도면을 분석하려면 원래 페이지를 이용하세요.`;
+  // 파일을 만들 때 지정한 공정 단위·도면 종류(예: BL2U-PFD)로 표시 (없으면 기본 BL3U · PFD)
+  const m = /^([A-Z0-9]+)-(PFD|PID)$/i.exec(data.slot || '');
+  if (m && [...$('#unitSelect').options].some((o) => o.value === m[1].toUpperCase())) {
+    state.unit = m[1].toUpperCase();
+    state.doc = m[2].toLowerCase();
+    markSlot();
+  }
   applyResult(data.result, data.pdfs.map(toBuffer));
 }
 

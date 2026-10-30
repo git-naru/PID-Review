@@ -125,6 +125,11 @@ export function postprocess(raw, files) {
   const inlineTags = new Set(lines.flatMap((l) => l.inline_items.map(normalizeTag)));
   // 라인 위에 설치된 설비(PFD의 이송 펌프 등)는 라인의 inline_items로만 연결될 수 있다
   const isInline = (n) => [n.id, n.tag, n.name].some((k) => k && inlineTags.has(normalizeTag(k)));
+  // 탱크·반응조·농축조에 붙는 부속 장치(교반기, 히터, 진동기, 레이크, 호이스트 등)는 배관이 없는 것이 정상이다
+  const isAccessory = (n) => /\b(AGITATORS?|HEATERS?|VIBRATORS?|RAKES?|HOISTS?|CRANES?|FEED ?WELLS?)\b/i.test(n.name || '')
+    || /^\d{3,4}-(AG|IH|BA|RK|HT|CR|FW)-/i.test(n.tag || '');
+  // 예비(Spare/Stand-by) 설비는 운전 설비 옆에 배관 없이 그리는 경우가 많다
+  const isSpare = (n) => /\b(SPARE|STAND-?BY)\b/i.test(`${n.name || ''} ${n.tag || ''}`);
 
   for (const l of lines) {
     if (l.kind !== 'signal' && (!l.from_id || !l.to_id)) {
@@ -184,11 +189,14 @@ export function postprocess(raw, files) {
 
   for (const n of nodes) {
     const d = degree.get(n.id);
-    if (n.category === 'equipment' && d.process + d.utility === 0 && !isInline(n)) {
+    if (n.category === 'equipment' && d.process + d.utility === 0 && !isInline(n) && !isAccessory(n)) {
+      const spare = isSpare(n);
       ruleIssues.push({
-        severity: 'high', category: 'unconnected',
+        severity: spare ? 'low' : 'high', category: 'unconnected',
         title: `미연결 설비 (${n.tag || n.name})`,
-        description: `${nodeLabel(n)}에 연결된 배관이 없습니다. 미사용 설비인지, 연결 배관이 누락되었는지 확인하세요.`,
+        description: spare
+          ? `${nodeLabel(n)}은(는) 예비 설비로 보이며 연결된 배관이 없습니다. 운전 설비와 같은 배관에 병렬로 연결되는지 확인하세요.`
+          : `${nodeLabel(n)}에 연결된 배관이 없습니다. 미사용 설비인지, 연결 배관이 누락되었는지 확인하세요.`,
         related_ids: [n.id],
       });
     }

@@ -206,3 +206,17 @@ test('NOTES 영역: 제목 아래 같은 열로 이어진 문단만 묶고 오�
   assert.ok(!inside(0.5, 0.3), '도면 본문');
   assert.ok(!inside(0.37, 0.95), '표제란');
 });
+
+test('배관이 없는 교반기·히터 같은 부속 장치는 미연결로 보지 않고, 예비 설비는 낮음으로', async () => {
+  const { files } = await loadSamples();
+  const node = (id, tag, name) => ({ id, tag, name, category: 'equipment', specs: [], loc: { file_index: 1, page: 1, bbox: null } });
+  const r = postprocess({
+    doc_type: 'pfd', summary: '', drawings: [], legend: { found: false },
+    nodes: [node('T', '3200-TK-001', 'BRINE FEED TANK'), node('AG', '3200-AG-002', 'BRINE FEED TANK AGITATOR'),
+      node('P1', '3200-PU-003', 'FEED PUMP 1'), node('P2', '3200-PU-004', 'FEED PUMP 2 (SPARE)'), node('X', '3200-FL-009', 'FILTER')],
+    lines: [{ id: 'S-1', line_no: '1', kind: 'process', from_id: 'T', to_id: 'P1', inline_items: [], specs: [], loc: { file_index: 1, page: 1, bbox: null } }],
+    issues: [],
+  }, files);
+  const un = r.issues.filter((i) => i.title.startsWith('미연결 설비'));
+  assert.deepEqual(un.map((i) => [i.related_ids[0], i.severity]).sort(), [['P2', 'low'], ['X', 'high']]);
+});
