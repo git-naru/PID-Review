@@ -3,8 +3,9 @@ import { analyzeInBrowser } from './engine.js';
 import { setupChatMode } from './chatmode.js';
 import { normalizeTag } from './shared/pidText.js';
 import { createPidView, FREE_ID } from './pidview.js';
+import { PDF_OPTIONS } from './pdfopts.js';
 import {
-  readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource,
+  readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource, drawingMassBalance,
   valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey, formatGpl, LI_KEY,
 } from './shared/massbalance.js';
 
@@ -439,7 +440,9 @@ async function setMassBalance(mb, { persist = false, quiet = false, slot = null 
   if (state.result) {
     applyResult(state.result, state.sources);
     const st = state.result.mass_balance?.stats;
-    if (st && !quiet) {
+    if (!mb && !quiet && state.result.mass_balance?.source === 'drawing') {
+      toast(`물질수지 파일을 뺐습니다. 도면 안 스트림 표(스트림 ${st.streams}개)의 값을 물질수지로 씁니다.`);
+    } else if (st && !quiet) {
       toast(`물질수지 스트림 ${st.streams}개 중 ${st.matched_streams}개를 도면 라인 ${st.matched_lines}개와 매칭했습니다.`
         + (st.matched_streams < st.streams ? '\n매칭되지 않은 스트림은 물질수지 탭과 검토 항목에서 확인하세요.' : ''));
     }
@@ -449,11 +452,16 @@ async function setMassBalance(mb, { persist = false, quiet = false, slot = null 
 }
 
 function renderMbChip() {
-  const mb = state.massBalance;
+  // 따로 넣은 물질수지가 없으면 도면 안 스트림 표로 만든 물질수지를 보여 준다 (뺄 수 없음)
+  const drawing = !state.massBalance && state.result?.mass_balance?.source === 'drawing' ? state.result.mass_balance : null;
+  const mb = state.massBalance || drawing;
   $('#mbChip').hidden = !mb;
+  $('#mbRemove').hidden = !!drawing;
   if (!mb) return;
   $('#mbChipText').textContent = `${mb.name}${mb.sheet && mb.sheet !== mb.name ? ` · ${mb.sheet}` : ''} · 스트림 ${mb.streams.length}개`;
-  $('#mbChip').title = mb.name;
+  $('#mbChip').title = drawing
+    ? '도면 안의 스트림 표에서 읽은 값입니다. 물질수지 파일을 따로 넣으면 그 파일을 쓰고, 도면 값과 다른 곳은 검토 항목에 표시합니다.'
+    : mb.name;
 }
 
 const optLabel = (o) => (o.unit ? `${o.name} (${o.unit})` : o.name);
@@ -504,9 +512,11 @@ function applyResult(result, sources, slot = null) {
     // 샘플 물질수지는 샘플 데모에만 쓴다
     if (state.massBalance?.demo && !result.meta?.demo) { state.massBalance = null; renderMbChip(); }
     // 물질수지가 들어 있는 결과(보기 전용 HTML, 내보낸 JSON)는 그 물질수지를 이어서 쓴다
-    if (result.mass_balance && !state.massBalance) { state.massBalance = massBalanceSource(result.mass_balance); renderMbChip(); }
+    if (result.mass_balance && result.mass_balance.source !== 'drawing' && !state.massBalance) { state.massBalance = massBalanceSource(result.mass_balance); renderMbChip(); }
   }
-  result = state.massBalance ? applyMassBalance(result, state.massBalance) : stripMassBalance(result);
+  // 물질수지 파일이 없으면 도면 안 스트림 표(판독한 값)를 물질수지로 쓴다
+  const mbUse = state.massBalance || drawingMassBalance(stripMassBalance(result));
+  result = mbUse ? applyMassBalance(result, mbUse) : stripMassBalance(result);
   const mbx = result.mass_balance;
   const streamsById = new Map((mbx?.streams || []).map((x) => [x.id, x]));
   state.lineStream = new Map((mbx?.matches || []).map((m) => [m.line_id, streamsById.get(m.stream_id)]));
@@ -540,7 +550,8 @@ function applyResult(result, sources, slot = null) {
     + `<span class="stat high">검토 높음<b>${s.issues.high}</b></span><span class="stat medium">중간<b>${s.issues.medium}</b></span><span class="stat">낮음<b>${s.issues.low}</b></span>`
     + (result.doc_type === 'pfd' ? '<span class="stat">PFD</span>'
       : result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
-    + (mbx ? `<span class="stat" title="물질수지 스트림 중 도면과 매칭된 수">물질수지 매칭<b>${mbx.stats.matched_streams}/${mbx.stats.streams}</b></span>` : '')
+    + (mbx?.source === 'drawing' ? `<span class="stat" title="도면 안 스트림 표에서 읽은 스트림 수 (물질수지로 사용)">도면 스트림 표<b>${mbx.stats.streams}</b></span>`
+      : mbx ? `<span class="stat" title="물질수지 스트림 중 도면과 매칭된 수">물질수지 매칭<b>${mbx.stats.matched_streams}/${mbx.stats.streams}</b></span>` : '')
     + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '')
     + (result.meta?.progress && result.meta.progress.done < result.meta.progress.total
       ? `<span class="stat medium">판독<b>${result.meta.progress.done}/${result.meta.progress.total}</b></span>` : '');
@@ -565,6 +576,7 @@ function applyResult(result, sources, slot = null) {
   $('#cntMb').textContent = mbStreams().length;
   if (!mbx && state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
   buildValueSelect();
+  renderMbChip();
 
   renderFlow();
   renderList();
@@ -612,7 +624,7 @@ function bindFlowToolbar() {
       const k = state.result?.links.find((x) => x.from_id === id || x.to_id === id);
       return k ? nodeById(k.from_id === id ? k.to_id : k.from_id) : null;
     },
-    goPage: (key) => { $('#drawingFilter').value = key; },
+    goPage: (key) => { $('#drawingFilter').value = key; updatePager(); },
     nav: () => ($('#optNav').checked ? flowNav() : null),
     pdfjs: pdfjsLib,
     selectFree,
@@ -620,6 +632,8 @@ function bindFlowToolbar() {
   document.querySelectorAll('#flowMode [data-mode]').forEach((b) => b.addEventListener('click', () => setFlowMode(b.dataset.mode)));
   markFlowMode();
   $('#drawingFilter').addEventListener('change', applyFlowFilter);
+  $('#btnPrev').addEventListener('click', () => stepPage(-1));
+  $('#btnNext').addEventListener('click', () => stepPage(1));
   $('#unitSelect').addEventListener('change', () => setSlot($('#unitSelect').value, state.doc));
   document.querySelectorAll('#docPick [data-doc]').forEach((b) => b.addEventListener('click', () => setSlot(state.unit, b.dataset.doc)));
   markSlot();
@@ -732,6 +746,7 @@ function clearResult() {
   $('#statusBar').hidden = $('#runBox').hidden && $('#progress').hidden;
   $('#btnExport').disabled = true;
   $('#drawingFilter').innerHTML = '<option value="all">전체 도면</option>';
+  updatePager();
   ['#cntEquipment', '#cntLines', '#cntInstruments', '#cntLegend', '#cntMb'].forEach((s) => { $(s).textContent = '0'; });
   $('.tab[data-tab="lines"]').firstChild.textContent = '배관 리스트 ';
   $('.tab[data-tab="massbalance"]').hidden = true;
@@ -739,6 +754,7 @@ function clearResult() {
   if (state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
   $('#flowValue').hidden = true;
   $('#lgFlow').hidden = true;
+  renderMbChip();
   renderList();
   renderIssues();
   renderDetail();
@@ -813,6 +829,24 @@ function markFlowMode() {
     : '설비나 라인을 클릭하면 상세 정보가 표시됩니다.';
 }
 
+/** 이전 / 다음 도면: 도면 선택 목록 순서대로 (기본 보기는 "전체 도면" 제외) */
+const pageOptions = () => [...$('#drawingFilter').options].filter((o) => !o.hidden);
+
+function updatePager() {
+  const opts = pageOptions();
+  const i = opts.findIndex((o) => o.value === $('#drawingFilter').value);
+  $('#btnPrev').disabled = !state.result || i <= 0;
+  $('#btnNext').disabled = !state.result || i < 0 || i >= opts.length - 1;
+}
+
+function stepPage(step) {
+  const opts = pageOptions();
+  const next = opts[opts.findIndex((o) => o.value === $('#drawingFilter').value) + step];
+  if (!next) return;
+  $('#drawingFilter').value = next.value;
+  applyFlowFilter();
+}
+
 /** 기본 보기는 도면 한 장씩: "전체 도면"이면 첫 P&ID 시트로 */
 function ensureSinglePage() {
   const sel = $('#drawingFilter');
@@ -826,6 +860,7 @@ function ensureSinglePage() {
 function renderFlow() {
   $('#flowEmpty').hidden = true;
   ensureSinglePage();
+  updatePager();
   if (state.flowMode === 'basic') {
     const reload = state.pvSources !== state.sources;
     state.pvSources = state.sources;
@@ -933,8 +968,9 @@ function nodeLabel(n) {
 }
 
 function applyFlowFilter() {
+  if (state.flowMode === 'basic') ensureSinglePage();
+  updatePager();
   if (state.flowMode === 'basic') {
-    ensureSinglePage();
     pv.setPage($('#drawingFilter').value);
     return;
   }
@@ -1676,7 +1712,7 @@ function getPdf(fileIndex) {
     const src = state.sources[fileIndex];
     if (!src) return Promise.reject(new Error('원본 PDF를 찾을 수 없습니다.'));
     // pdf.js가 버퍼를 워커로 넘기므로 사본 전달
-    state.pdfDocs.set(fileIndex, pdfjsLib.getDocument({ data: src.slice(0) }));
+    state.pdfDocs.set(fileIndex, pdfjsLib.getDocument({ data: src.slice(0), ...PDF_OPTIONS }));
   }
   return state.pdfDocs.get(fileIndex).promise;
 }

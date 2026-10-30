@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractPdfText } from '../server/pdfText.js';
 import { postprocess } from '../shared/postprocess.js';
+import { pdfWasmModuleSource } from './pdf-wasm.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'dist', 'artifact');
@@ -30,12 +31,13 @@ const css = await fs.readFile(path.join(ROOT, 'public', 'styles.css'), 'utf8');
 const page = `${head.trim()}\n${body.trim()}\n`.replace('<link rel="stylesheet" href="styles.css" />', `<style>\n${css}</style>`);
 await fs.writeFile(path.join(OUT, 'index.html'), page);
 
-for (const f of ['app.js', 'engine.js', 'chatmode.js', 'pidview.js']) await copy(`public/${f}`, f);
+for (const f of ['app.js', 'engine.js', 'chatmode.js', 'pidview.js', 'pdfopts.js']) await copy(`public/${f}`, f);
 for (const f of await fs.readdir(path.join(ROOT, 'shared'))) await copy(`shared/${f}`, `shared/${f}`);
 await copy('node_modules/cytoscape/dist/cytoscape.min.js', 'vendor/cytoscape.min.js');
 await copy('node_modules/cytoscape-dagre/dist/cytoscape-dagre.js', 'vendor/cytoscape-dagre.js');
 await copy('node_modules/pdfjs-dist/legacy/build/pdf.min.mjs', 'vendor/pdf.min.mjs');
 await copy('node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs', 'vendor/pdf.worker.min.mjs');
+await fs.writeFile(path.join(OUT, 'vendor/pdf-wasm.js'), await pdfWasmModuleSource());
 
 // 아티팩트는 제어 문자(ESC 등)가 들어간 텍스트 파일을 받지 않는다.
 // 압축된 라이브러리 안의 제어 문자는 모두 문자열/정규식 리터럴 안에 있으므로 \xHH 이스케이프로 바꿔도 값이 같다.

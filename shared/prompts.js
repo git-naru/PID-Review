@@ -24,6 +24,13 @@ Extract every pipe line segment between nodes. Use the line number text written 
 from one node to another; tees/branches connect into another line - in that case set from/to to the node the
 branch ultimately connects to on the flow path. Instrument signal/impulse lines are kind "signal" (instrument -> process node or valve).
 Utility services (CW, steam, N2, IA...) are kind "utility".
+Many PFDs and some P&IDs carry their own mass balance on the sheet: a stream table / heat & material balance table
+whose columns are stream numbers (rows such as mass flow, volumetric flow, density, temperature, pressure, % solids,
+composition like Li+ % w/w). It may be drawn as text or as an embedded image - read it from the image if needed.
+When present, copy every row of each stream column into "specs" of the line that carries that stream number (and set
+"stream_no"): name = row label with its unit in parentheses exactly as in the table (e.g. "Nominal mass flow (t/h)",
+"Li+ (% w/w)"), value = the cell as written; put the table's stream description in a spec named "Stream description".
+If a table column's stream number is not drawn on this sheet, raise a low issue listing those stream numbers.
 Report issues you observe directly on the drawing (Korean text): lines ending without a destination, equipment
 with no connected line, missing line number / size / spec class, data box values inconsistent with the symbol
 (e.g. tag mismatch), duplicated tags, off-page connectors whose referenced drawing is not among the uploaded files,

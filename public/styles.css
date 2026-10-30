@@ -162,6 +162,9 @@ button { font: inherit; }
 .doc-pick button.active { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
 .doc-pick button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .slot-empty { font-size: 14px; }
+/* 이전 / 다음 도면: 넘길 도면이 없으면 회색으로만 (경고 없음) */
+.pager { display: inline-flex; align-items: center; gap: 4px; }
+.pager .btn:disabled { opacity: 1; background: var(--surface-2); color: var(--muted); border-color: var(--border); cursor: default; }
 /* 올리기 전 공정 단위 · PFD / P&ID 선택 창 */
 .modal-box.slot-box { width: min(440px, 100%); gap: 10px; }
 .slot-box h3 { font-size: 16px; }

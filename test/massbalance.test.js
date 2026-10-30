@@ -7,7 +7,7 @@ import { extractPdfText } from '../server/pdfText.js';
 import { postprocess } from '../shared/postprocess.js';
 import {
   readMassBalanceFile, parseMassBalance, applyMassBalance, stripMassBalance, splitLabel, streamKey,
-  valueOptions, defaultValueKey, lineValue, lithiumGpl, MassBalanceError,
+  valueOptions, defaultValueKey, lineValue, lithiumGpl, MassBalanceError, drawingMassBalance,
 } from '../shared/massbalance.js';
 
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples');
@@ -154,4 +154,27 @@ test('Li 농도(g/L): 액상은 Li+ × 밀도, 슬러리는 액상 분율 반영
   // 밀도 단위가 kg/m3이면 1000으로 나눈다
   const kgm3 = parseMassBalance(grid([['Stream', '', '1', '2'], ['Density', 'kg/m3', '1050', '1000'], ['Li+', '% w/w', '0.5', '0']]));
   assert.ok(Math.abs(lithiumGpl(kgm3.streams[0], kgm3.properties).gpl - 5.25) < 1e-9);
+});
+
+test('도면 안 스트림 표: 라인 specs를 물질수지로 모아 Li 농도를 내고, 검토 항목은 만들지 않는다', () => {
+  const line = (no, specs) => ({ id: `S-${no}`, line_no: no, kind: 'process', stream_no: '', specs, issue_ids: [], from_id: '', to_id: '' });
+  const result = {
+    doc_type: 'pfd', nodes: [], issues: [], stats: { issues: { high: 0, medium: 0, low: 0 } },
+    lines: [
+      line('1101', [{ name: 'Stream description', value: 'Raw brine' }, { name: 'Nominal mass flow (t/h)', value: '1,303' },
+        { name: 'Density (t/m3)', value: '1.208' }, { name: 'Li+ (% w/w)', value: '0.06' }, { name: 'Design factor (-)', value: '-' }]),
+      line('1095', []),
+    ],
+  };
+  const mb = drawingMassBalance(result);
+  assert.equal(mb.source, 'drawing');
+  assert.deepEqual(mb.streams.map((s) => s.id), ['1101']);
+  assert.equal(mb.streams[0].description, 'Raw brine');
+  const li = lithiumGpl(mb.streams[0], mb.properties);
+  assert.ok(Math.abs(li.gpl - 0.06 * 1.208 * 10) < 1e-9);
+  const out = applyMassBalance(result, mb);
+  assert.equal(out.mass_balance.source, 'drawing');
+  assert.equal(out.mass_balance.stats.matched_streams, 1);
+  assert.equal(out.issues.length, 0, '도면 자신과 비교하는 검토 항목은 없음');
+  assert.equal(drawingMassBalance({ ...result, lines: [line('1095', [])] }), null);
 });

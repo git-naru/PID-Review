@@ -357,6 +357,35 @@ export function formatValue(v) {
 const METHOD_LABEL = { stream_no: '스트림 번호', line_no: 'Line No.', from_to: 'From/To 설비' };
 export const matchMethodLabel = (m) => METHOD_LABEL[m] || m;
 
+/**
+ * 도면 안의 스트림 표(Heat & Material Balance)를 물질수지로 쓴다.
+ * 판독 결과의 라인별 specs(스트림 표에서 옮긴 값)를 스트림 × 항목 표로 모은다. 따로 넣은 물질수지가 없을 때
+ * 이것으로 Li 농도, 물질수지 탭, Line No. 조회를 쓸 수 있다. 표 값이 없으면 null.
+ */
+export function drawingMassBalance(result) {
+  const pfd = result.doc_type === 'pfd';
+  const streams = new Map();
+  const properties = new Map();
+  for (const l of result.lines) {
+    if (l.kind === 'signal') continue;
+    const id = l.stream_no || (pfd ? l.line_no : '');
+    const key = streamKey(id);
+    const specs = (l.specs || []).filter((sp) => String(sp.value ?? '').trim() && !DASH.test(String(sp.value).trim()));
+    if (!key || !specs.length) continue;
+    const s = streams.get(key) || { id, key, description: '', from: '', to: '', line_no: pfd ? '' : l.line_no || '', values: {} };
+    for (const sp of specs) {
+      if (/^stream\s+description/i.test(sp.name)) { s.description ||= sp.value; continue; }
+      const k = specKey(sp.name);
+      if (!properties.has(k)) properties.set(k, { key: k, ...splitLabel(sp.name), group: '' });
+      s.values[k] ??= sp.value;
+    }
+    streams.set(key, s);
+  }
+  const list = [...streams.values()].filter((s) => Object.keys(s.values).length);
+  if (!list.length) return null;
+  return { name: '도면 스트림 표', source: 'drawing', properties: [...properties.values()], streams: list };
+}
+
 /** 물질수지를 반영한 결과 사본: mass_balance(매칭 정보)와 물질수지 검토 항목이 추가된다 */
 export function applyMassBalance(result, mb) {
   const base = stripMassBalance(result);
@@ -386,8 +415,9 @@ export function applyMassBalance(result, mb) {
     for (const l of flowLines) if (!matched.has(l.id) && endIs(s.from, l.from_id) && endIs(s.to, l.to_id)) add(l, s, 'from_to');
   }
 
-  // ---- 검토 항목
+  // ---- 검토 항목 (도면 스트림 표에서 만든 물질수지는 도면 자신과 비교할 것이 없으므로 만들지 않는다)
   const found = [];
+  const fromDrawing = mb.source === 'drawing';
   const lineName = (l) => (pfd ? `스트림 ${l.line_no || l.id}` : l.line_no || l.id);
   // 같은 이름이면 한쪽에 단위가 없어도 같은 항목으로 본다
   const propFor = (specName) => {
@@ -398,7 +428,7 @@ export function applyMassBalance(result, mb) {
     const same = mb.properties.filter((p) => { const [pn, pu] = p.key.split('|'); return pn === n && (!u || !pu || pu === u); });
     return same.length === 1 ? same[0] : null;
   };
-  for (const l of flowLines) {
+  for (const l of fromDrawing ? [] : flowLines) {
     const s = matched.get(l.id);
     if (!s || !l.specs?.length) continue;
     const diffs = [];
@@ -424,7 +454,9 @@ export function applyMassBalance(result, mb) {
   const usedStreams = new Set(matches.map((m) => m.stream_id));
   const left = mb.streams.filter((s) => !usedStreams.has(s.id));
   const list = (xs) => xs.slice(0, 30).join(', ') + (xs.length > 30 ? ` 외 ${xs.length - 30}개` : '');
-  if (!matches.length) {
+  if (fromDrawing) {
+    // 검토 항목 없음
+  } else if (!matches.length) {
     found.push({
       severity: 'medium', category: 'missing_info',
       title: '물질수지와 매칭된 라인 없음',
@@ -441,7 +473,7 @@ export function applyMassBalance(result, mb) {
       related_ids: [],
     });
   }
-  if (pfd && matches.length) {
+  if (pfd && matches.length && !fromDrawing) {
     const noData = flowLines.filter((l) => l.line_no && !matched.has(l.id));
     if (noData.length) {
       found.push({
@@ -471,7 +503,7 @@ export function applyMassBalance(result, mb) {
     issues,
     stats: { ...base.stats, issues: countSeverity(issues) },
     mass_balance: {
-      name: mb.name, sheet: mb.sheet, properties: mb.properties, streams: mb.streams, matches,
+      name: mb.name, sheet: mb.sheet, source: mb.source || 'file', properties: mb.properties, streams: mb.streams, matches,
       stats: { streams: mb.streams.length, matched_streams: usedStreams.size, lines: flowLines.length, matched_lines: matched.size },
     },
   };
@@ -489,7 +521,7 @@ export function stripMassBalance(result) {
 
 /** 결과에 들어 있는 물질수지에서 다시 적용할 원본 표만 꺼낸다 */
 export const massBalanceSource = (mbInResult) => (mbInResult
-  ? { name: mbInResult.name, sheet: mbInResult.sheet, properties: mbInResult.properties, streams: mbInResult.streams } : null);
+  ? { name: mbInResult.name, sheet: mbInResult.sheet, source: mbInResult.source, properties: mbInResult.properties, streams: mbInResult.streams } : null);
 
 const countSeverity = (issues) => issues.reduce((a, i) => { a[i.severity] = (a[i.severity] || 0) + 1; return a; }, { high: 0, medium: 0, low: 0 });
 

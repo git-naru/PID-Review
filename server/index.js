@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { extractPdfText } from './pdfText.js';
 import { analyzeWithClaude, AnalysisError, isApiConfigured, MODEL } from './analyzer.js';
 import { postprocess } from '../shared/postprocess.js';
+import { pdfWasmModuleSource } from '../scripts/pdf-wasm.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 3000);
@@ -28,6 +29,11 @@ vendor('/vendor/cytoscape.min.js', 'cytoscape/dist/cytoscape.min.js');
 vendor('/vendor/cytoscape-dagre.js', 'cytoscape-dagre/dist/cytoscape-dagre.js');
 vendor('/vendor/pdf.min.mjs', 'pdfjs-dist/legacy/build/pdf.min.mjs');
 vendor('/vendor/pdf.worker.min.mjs', 'pdfjs-dist/legacy/build/pdf.worker.min.mjs');
+let wasmSource = null;
+app.get('/vendor/pdf-wasm.js', async (_req, res) => {
+  wasmSource ||= pdfWasmModuleSource();
+  res.type('text/javascript').send(await wasmSource);
+});
 app.use('/samples', express.static(path.join(ROOT, 'samples'), { index: false }));
 app.use('/shared', express.static(path.join(ROOT, 'shared'), { index: false }));
 

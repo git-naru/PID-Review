@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
+import { pdfWasmModuleSource } from './pdf-wasm.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [resultPath, pdfDir, outPath] = process.argv.slice(2);
@@ -19,6 +20,8 @@ const resolvePaths = {
   setup(build) {
     build.onResolve({ filter: /^\.\/vendor\/pdf\.min\.mjs$/ }, () => ({ path: path.join(ROOT, 'node_modules/pdfjs-dist/legacy/build/pdf.min.mjs') }));
     build.onResolve({ filter: /^\.\/shared\// }, (a) => ({ path: path.join(ROOT, a.path) }));
+    build.onResolve({ filter: /^\.\/vendor\/pdf-wasm\.js$/ }, () => ({ path: 'pdf-wasm', namespace: 'pid-wasm' }));
+    build.onLoad({ filter: /.*/, namespace: 'pid-wasm' }, async () => ({ contents: await pdfWasmModuleSource(), loader: 'js' }));
   },
 };
 const bundle = await esbuild.build({

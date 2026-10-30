@@ -90,7 +90,11 @@
             <button type="button" data-mode="basic" title="원본 PDF 도면 그대로 보기">기본</button>
             <button type="button" data-mode="auto" title="설비·배관 연결을 자동으로 배치해 보기">자동배치</button>
           </div>
-          <select id="drawingFilter" title="도면 선택"><option value="all">전체 도면</option></select>
+          <div class="pager" role="group" aria-label="도면 넘기기">
+            <button class="btn small" id="btnPrev" type="button" title="이전 도면" disabled>◀ 이전</button>
+            <select id="drawingFilter" title="도면 선택"><option value="all">전체 도면</option></select>
+            <button class="btn small" id="btnNext" type="button" title="다음 도면" disabled>다음 ▶</button>
+          </div>
           <select id="flowValue" title="라인에 함께 표시할 스트림 값 (물질수지 또는 도면 스트림 표)" hidden></select>
           <label id="optNavLabel" title="선택한 설비·라인 아래에 ◀ From / To ▶ 이동 버튼 표시"><input type="checkbox" id="optNav" /> 연결목록</label>
           <label id="optMainLabel" title="도면 범례의 MAIN FLOW와 같은 굵기·색의 선을 주황색으로 표시"><input type="checkbox" id="optMain" /> Main Stream</label>

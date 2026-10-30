@@ -10,6 +10,7 @@ import { extractTextFromDocument, pageTextForPrompt } from './shared/pidText.js'
 import { classifyPrompt, legendPrompt, sheetPrompt } from './shared/prompts.js';
 import { postprocess } from './shared/postprocess.js';
 import { emptyLegend, mergeLegend, compactLegend, mergeSheets, combineOutputs, str } from './shared/merge.js';
+import { PDF_OPTIONS } from './pdfopts.js';
 
 const PROMPT_VERSION = 'v2'; // 프롬프트나 결과 형식이 바뀌면 올려서 이전 저장 결과를 쓰지 않게 한다
 const PROMPT_TEXT_BUDGET = 150_000; // 한 번의 호출에 넣을 텍스트 레이어 최대 글자 수 (입력 한도 256KiB)
@@ -54,7 +55,7 @@ export async function analyzeInBrowser({ files, sample, pdfjs, tier = 'complex',
   const texts = [];
   try {
     for (const f of files) {
-      const task = pdfjs.getDocument({ data: f.buffer.slice(0), isEvalSupported: false });
+      const task = pdfjs.getDocument({ data: f.buffer.slice(0), isEvalSupported: false, ...PDF_OPTIONS });
       tasks.push(task);
       let doc;
       try {
