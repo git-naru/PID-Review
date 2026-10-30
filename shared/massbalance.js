@@ -330,10 +330,17 @@ const canonUnit = (u) => String(u || '').toLowerCase().replace(/\s+/g, '').repla
 const canonName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9%가-힣+]/g, '');
 const propertyKey = (name, unit, group = '') => `${canonName(name)}|${canonUnit(unit)}${group ? `|${canonName(group)}` : ''}`;
 
-/** 도면 스트림 표의 항목 이름 ("Nominal mass flow (t/h)")도 같은 키로 맞춘다 */
+/** 도면 스트림 표의 항목 이름 ("Nominal mass flow (t/h)", "Liquid: Li+ (%)")도 같은 키로 맞춘다 */
 export function specKey(specName) {
-  const { name, unit } = splitLabel(specName);
-  return propertyKey(name, unit);
+  const { name, unit, group } = specParts(specName);
+  return propertyKey(name, unit, group);
+}
+
+/** "Liquid: Li+ (%)" → {name: 'Li+', unit: '%', group: 'Liquid'} (조성 구분 머리말: Liquid / Solids) */
+function specParts(specName) {
+  const m = String(specName ?? '').match(/^\s*(liquid|solids?)\s*:\s*(.+)$/i);
+  const group = m ? (/^l/i.test(m[1]) ? 'Liquid' : 'Solids') : '';
+  return { ...splitLabel(m ? m[2] : specName), group };
 }
 
 /** "1,234.5 t/h" → 1234.5 */
@@ -376,7 +383,8 @@ export function drawingMassBalance(result) {
     for (const sp of specs) {
       if (/^stream\s+description/i.test(sp.name)) { s.description ||= sp.value; continue; }
       const k = specKey(sp.name);
-      if (!properties.has(k)) properties.set(k, { key: k, ...splitLabel(sp.name), group: '' });
+      const { name, unit, group } = specParts(sp.name);
+      if (!properties.has(k)) properties.set(k, { key: k, name: group ? `${name} (${group})` : name, unit, group });
       s.values[k] ??= sp.value;
     }
     streams.set(key, s);
@@ -542,7 +550,8 @@ export function valueOptions(result) {
     for (const sp of l.specs || []) {
       const k = specKey(sp.name);
       if (out.has(k) || !Number.isFinite(toNumber(sp.value))) continue;
-      const { name, unit } = splitLabel(sp.name);
+      const { name: base, unit, group } = specParts(sp.name);
+      const name = group ? `${base} (${group})` : base;
       out.set(k, { key: k, name, unit, flow: FLOW_RE.test(name) });
     }
   }
