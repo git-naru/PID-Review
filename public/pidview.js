@@ -570,6 +570,11 @@ export function createPidView(container, ui) {
     },
     setPage,
     prefetch,
+    /** 검색으로 고른 항목: 지금 도면에 있으면 그 위치로 부드럽게 옮긴다 (다른 도면이면 highlight가 넘어감) */
+    reveal(ids) {
+      const it = v.result && [...v.result.nodes, ...v.result.lines].find((x) => ids.includes(x.id) && x.loc?.bbox && `${x.loc.file_index}:${x.loc.page}` === v.key);
+      if (it && v.page) centerOn(it.loc.bbox);
+    },
     /** 확대·축소 버튼: 보이는 화면 가운데를 기준으로 */
     zoomBy(f) {
       if (v.page) zoomSmooth(f, container.clientWidth / 2, container.clientHeight / 2);

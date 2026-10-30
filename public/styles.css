@@ -166,6 +166,21 @@ button { font: inherit; }
 .doc-pick button.active[data-doc="pfd"] { color: var(--primary); }
 .doc-pick button.active[data-doc="pid"] { color: var(--accent); }
 .doc-pick button.active { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+/* Stream·설비 검색: 공정 단위·PFD / P&ID 오른쪽. 고른 묶음 안에서만 찾는다 */
+.flow-search { position: relative; }
+.flow-search input { width: 240px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.flow-search input:focus { outline: 2px solid color-mix(in srgb, var(--primary) 40%, transparent); outline-offset: 0; border-color: var(--primary); }
+.search-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; width: 380px; max-width: calc(100vw - 32px); max-height: 340px; overflow: auto; margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px var(--shadow); }
+.search-list[hidden] { display: none; }
+.search-list li { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: baseline; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.search-list li.active, .search-list li:hover { background: var(--row-hover); }
+.search-list li.empty { display: block; color: var(--muted); cursor: default; background: none; }
+.search-list .kind { grid-row: span 2; font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.search-list .lbl { font-weight: 600; font-family: var(--font-mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-list .sub { grid-column: 2; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-list mark { background: color-mix(in srgb, var(--primary) 22%, transparent); color: inherit; border-radius: 2px; }
+@media (max-width: 720px) { .flow-search, .flow-search input { width: 100%; } }
 .doc-pick button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .slot-empty { font-size: 14px; }
 /* 이전 / 다음 도면: 넘길 도면이 없으면 회색으로만 (경고 없음) */

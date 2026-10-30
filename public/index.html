@@ -50,9 +50,6 @@
   <section class="filebar" id="fileBar">
     <span class="muted" id="fileHint">입력된 파일 없음 — 한 장 또는 여러 장의 P&amp;ID PDF를 선택하거나 이 화면에 끌어다 놓으세요.</span>
     <ul class="chips" id="fileChips"></ul>
-    <form class="mb-lookup" id="mbLookup" hidden>
-      <input type="search" id="mbLookupInput" placeholder="Line No. 또는 스트림 번호 입력 후 Enter" aria-label="물질수지 조회: Line No. 또는 스트림 번호" title="여러 개는 쉼표로 구분해 나란히 비교할 수 있습니다" />
-    </form>
     <span class="mb-chip" id="mbChip" hidden><b>물질수지</b><span id="mbChipText"></span><button type="button" id="mbRemove" aria-label="물질수지 빼기" title="물질수지 빼기">×</button></span>
   </section>
 
@@ -83,6 +80,11 @@
           </select>
           <div class="doc-pick" id="docPick" role="group" aria-label="도면 종류">
             <button type="button" data-doc="pfd" title="PFD 보기">PFD</button><span aria-hidden="true">/</span><button type="button" data-doc="pid" title="P&amp;ID 보기">P&amp;ID</button>
+          </div>
+          <div class="flow-search" id="flowSearchBox">
+            <input type="search" id="flowSearch" placeholder="Stream·설비 검색" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="flowSearchList" aria-label="Stream·설비 검색"
+              title="태그·명칭·Line No.·스트림 번호로 찾습니다. 지금 고른 공정 단위와 PFD / P&amp;ID 안에서 찾습니다. 물질수지가 있으면 쉼표로 여러 스트림을 넣고 Enter: 물질수지 표로 비교" />
+            <ul class="search-list" id="flowSearchList" role="listbox" hidden></ul>
           </div>
         </div>
         <div class="toolbar">

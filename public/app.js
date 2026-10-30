@@ -71,6 +71,7 @@ async function init() {
   bindLists();
   bindViewer();
   bindFlowToolbar();
+  bindSearch();
   $('#btnStop').addEventListener('click', () => runtime.abort?.abort());
   $('#btnResume').addEventListener('click', () => runAction());
   $('#tierSelect').hidden = MODE !== 'sample';
@@ -187,10 +188,6 @@ function bindUpload() {
     if (f) loadMassBalance(f);
   });
   $('#mbRemove').addEventListener('click', () => setMassBalance(null, { persist: true }));
-  $('#mbLookup').addEventListener('submit', (e) => {
-    e.preventDefault();
-    lookupMassBalance($('#mbLookupInput').value);
-  });
   $('#mbClose').addEventListener('click', closeMbTable);
   // 물질수지 표 창 안에서도 다른 Line No.를 바로 조회
   $('#mbLookup2').addEventListener('submit', (e) => {
@@ -611,7 +608,6 @@ function applyResult(result, sources, slot = null) {
   $('#cntInstruments').textContent = instrumentRows().length;
   $('#cntLegend').textContent = legendRows().length;
   $('.tab[data-tab="massbalance"]').hidden = !mbx;
-  $('#mbLookup').hidden = !mbx;
   $('#cntMb').textContent = mbStreams().length;
   if (!mbx && state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
   buildValueSelect();
@@ -788,6 +784,8 @@ function setSlot(unit, doc) {
 
 function markSlot() {
   $('#unitSelect').value = state.unit;
+  closeSearch(true);
+  $('#flowSearch').placeholder = `${slotLabel()} Stream·설비 검색`;
   document.querySelectorAll('#docPick [data-doc]').forEach((b) => {
     b.classList.toggle('active', b.dataset.doc === state.doc);
     b.setAttribute('aria-pressed', String(b.dataset.doc === state.doc));
@@ -813,7 +811,6 @@ function clearResult() {
   ['#cntEquipment', '#cntLines', '#cntInstruments', '#cntLegend', '#cntMb'].forEach((s) => { $(s).textContent = '0'; });
   $('.tab[data-tab="lines"]').firstChild.textContent = '배관 리스트 ';
   $('.tab[data-tab="massbalance"]').hidden = true;
-  $('#mbLookup').hidden = true;
   if (state.tab === 'massbalance') document.querySelector('.tab[data-tab="equipment"]').click();
   $('#flowValue').hidden = true;
   $('#lgFlow').hidden = true;
@@ -1138,6 +1135,112 @@ function flowStyle() {
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => cy?.style(flowStyle()));
 new MutationObserver(() => cy?.style(flowStyle())).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+// ------------------------------------------------------------------ Stream·설비 검색
+// 공정 Flow 제목 옆. 지금 고른 공정 단위·PFD / P&ID의 결과 안에서만 찾는다(묶음을 바꾸면 검색어를 비움).
+// 설비·계기·밸브는 태그·명칭, 라인은 Line No.·스트림 번호·Service. 똑같음 > 앞부분 같음 > 포함 순.
+const search = { items: [], active: -1 };
+
+function searchItems(q) {
+  const r = state.result;
+  const Q = q.trim().toUpperCase();
+  if (!r || !Q) return [];
+  const score = (fields) => {
+    let best = 0;
+    for (const f of fields) {
+      const t = String(f ?? '').toUpperCase();
+      if (!t) continue;
+      if (t === Q) return 3;
+      best = Math.max(best, t.startsWith(Q) ? 2 : t.includes(Q) ? 1 : 0);
+    }
+    return best;
+  };
+  const out = [];
+  for (const n of r.nodes) {
+    if (!['equipment', 'instrument', 'valve'].includes(n.category)) continue;
+    const sc = score([n.tag, n.name]);
+    if (sc) out.push({ sc: sc + (n.category === 'equipment' ? 0.5 : 0), sel: { type: 'node', id: n.id }, kind: CATEGORY_LABEL[n.category], label: n.tag || n.name, sub: n.tag ? n.name : '' });
+  }
+  for (const l of r.lines) {
+    if (l.kind === 'signal') continue;
+    const sc = score([l.line_no, l.stream_no, l.service]);
+    if (!sc) continue;
+    const no = l.line_no || l.stream_no;
+    out.push({ sc: sc + (no ? 0.4 : 0), sel: { type: 'line', id: l.id }, kind: isPfd() ? 'Stream' : '배관', label: no || '(번호 없음)', sub: `${nodeName(l.from_id) || '?'} → ${nodeName(l.to_id) || '?'}${l.service ? ` · ${l.service}` : ''}` });
+  }
+  return out.sort((a, b) => b.sc - a.sc || String(a.label).localeCompare(String(b.label), 'ko', { numeric: true })).slice(0, 40);
+}
+
+function renderSearch() {
+  const input = $('#flowSearch'), list = $('#flowSearchList');
+  const q = input.value.trim();
+  if (!q) { closeSearch(); return; }
+  search.items = searchItems(q);
+  search.active = search.items.length ? 0 : -1;
+  const hl = (t) => {
+    const s = String(t ?? ''), i = s.toUpperCase().indexOf(q.toUpperCase());
+    return i < 0 ? esc(s) : `${esc(s.slice(0, i))}<mark>${esc(s.slice(i, i + q.length))}</mark>${esc(s.slice(i + q.length))}`;
+  };
+  const mbHint = state.result?.mass_balance && /[,;]/.test(q) ? '<li class="empty">Enter: 쉼표로 넣은 스트림을 물질수지 표로 비교</li>' : '';
+  list.innerHTML = !state.result
+    ? `<li class="empty">${esc(slotLabel())} 자료가 아직 없습니다.</li>`
+    : (search.items.length
+      ? search.items.map((it, i) => `<li role="option" data-i="${i}" class="${i === search.active ? 'active' : ''}"><span class="kind">${esc(it.kind)}</span><span class="lbl">${hl(it.label)}</span><span class="sub">${hl(it.sub)}</span></li>`).join('')
+      : `<li class="empty">${esc(slotLabel())}에서 찾지 못했습니다.</li>`) + mbHint;
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+}
+
+function closeSearch(clear = false) {
+  const input = $('#flowSearch'), list = $('#flowSearchList');
+  if (!input) return;
+  if (clear) input.value = '';
+  list.hidden = true;
+  input.setAttribute('aria-expanded', 'false');
+  search.items = [];
+  search.active = -1;
+}
+
+function pickSearch(i) {
+  const it = search.items[i];
+  if (!it) return;
+  closeSearch();
+  $('#flowSearch').blur();
+  select(it.sel, 'search');
+  // 같은 도면에 있으면 그 위치로 부드럽게 옮긴다 (다른 도면이면 select가 그 도면으로 넘어간다)
+  if (state.flowMode === 'basic') pv.reveal(it.sel.type === 'node' || it.sel.type === 'line' ? [it.sel.id] : []);
+}
+
+function bindSearch() {
+  const input = $('#flowSearch'), list = $('#flowSearchList');
+  input.placeholder = `${slotLabel()} Stream·설비 검색`;
+  let t = null;
+  input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(renderSearch, 120); });
+  input.addEventListener('focus', () => { if (input.value.trim()) renderSearch(); });
+  input.addEventListener('keydown', (e) => {
+    const n = search.items.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (list.hidden) { renderSearch(); return; }
+      e.preventDefault();
+      if (!n) return;
+      search.active = (search.active + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+      list.querySelectorAll('li[data-i]').forEach((li) => li.classList.toggle('active', Number(li.dataset.i) === search.active));
+      list.querySelector('li.active')?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = input.value.trim();
+      // 물질수지가 있으면: 쉼표로 여러 개를 넣거나 목록에 없으면 물질수지 표로 조회 (예전 "Line No. 또는 스트림 번호" 칸과 같음)
+      if (state.result?.mass_balance && (/[,;]/.test(q) || !n)) { closeSearch(); lookupMassBalance(q); return; }
+      if (list.hidden) renderSearch();
+      pickSearch(Math.max(0, search.active));
+    } else if (e.key === 'Escape') {
+      closeSearch(!list.hidden ? false : true);
+    }
+  });
+  list.addEventListener('pointerdown', (e) => e.preventDefault()); // 입력칸 포커스 유지
+  list.addEventListener('click', (e) => { const li = e.target.closest('li[data-i]'); if (li) pickSearch(Number(li.dataset.i)); });
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#flowSearchBox')) closeSearch(); });
+}
+
 function highlightInFlow(ids, focus) {
   if (state.flowMode === 'basic') { pv.highlight(ids, focus); return; }
   if (!cy) return;
@@ -1421,7 +1524,7 @@ function openMbTable(streams) {
 
 function closeMbTable() {
   $('#mbModal').hidden = true;
-  $('#mbLookupInput').focus();
+  $('#flowSearch').focus();
 }
 
 function mbTableCsv({ streams, rows }) {
