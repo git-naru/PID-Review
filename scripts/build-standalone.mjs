@@ -1,6 +1,8 @@
 // 분석 결과와 도면 PDF를 모두 넣은 단일 HTML(보기 전용)을 만든다. 서버·인터넷 없이 PC에서 열어 볼 수 있다.
 // 사용법: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html> [공정 단위-도면 종류, 예: BL2U-PFD]
+//         node scripts/build-standalone.mjs --multi <out.html> <묶음 키> <result.json> <pdf-dir> [<묶음 키> <result.json> <pdf-dir> ...]
 //   pdf-dir 안에서 result.files[i].name과 같은 이름의 PDF를 찾는다.
+//   --multi: 여러 묶음(BL3U-PFD, BL2U-PID 등)을 한 파일에 넣고, 공정 단위·PFD / P&ID 선택으로 바꿔 본다. 처음엔 첫 묶음이 열린다.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,9 +10,21 @@ import * as esbuild from 'esbuild';
 import { pdfWasmModuleSource } from './pdf-wasm.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const [resultPath, pdfDir, outPath, slot = ''] = process.argv.slice(2);
-if (!resultPath || !pdfDir || !outPath) {
-  console.error('usage: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html>');
+const argv = process.argv.slice(2);
+let outPath, bundleArgs;
+if (argv[0] === '--multi') {
+  outPath = argv[1];
+  bundleArgs = [];
+  if ((argv.length - 2) % 3 === 0) {
+    for (let i = 2; i < argv.length; i += 3) bundleArgs.push({ slot: argv[i], resultPath: argv[i + 1], pdfDir: argv[i + 2] });
+  }
+} else {
+  const [resultPath, pdfDir, out, slot = ''] = argv;
+  outPath = out;
+  bundleArgs = resultPath && pdfDir ? [{ slot, resultPath, pdfDir }] : [];
+}
+if (!outPath || !bundleArgs.length) {
+  console.error('usage: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html> [BL2U-PFD]\n       node scripts/build-standalone.mjs --multi <out.html> <slot> <result.json> <pdf-dir> [...]');
   process.exit(1);
 }
 
@@ -32,13 +46,16 @@ const bundle = await esbuild.build({
 });
 const appJs = bundle.outputFiles[0].text;
 
-// 2) 데이터: 결과 + 도면(base64)
-const result = JSON.parse(await fs.readFile(resultPath, 'utf8'));
-const pdfs = [];
-for (const f of result.files) {
-  pdfs.push((await fs.readFile(path.join(pdfDir, f.name))).toString('base64'));
+// 2) 데이터: 묶음마다 결과 + 도면(base64)
+const bundles = [];
+for (const b of bundleArgs) {
+  const result = JSON.parse(await fs.readFile(b.resultPath, 'utf8'));
+  const pdfs = [];
+  for (const f of result.files) pdfs.push((await fs.readFile(path.join(b.pdfDir, f.name))).toString('base64'));
+  bundles.push({ slot: b.slot.toUpperCase(), result, pdfs });
 }
-const data = JSON.stringify({ result, pdfs, slot: slot.toUpperCase() }).replace(/<\//g, '<\\/');
+const data = JSON.stringify(bundles.length === 1 ? { ...bundles[0] } : { bundles }).replace(/<\//g, '<\\/');
+const fileCount = bundles.reduce((n, b) => n + b.pdfs.length, 0);
 
 // 3) 페이지: 스타일·스크립트를 모두 인라인
 const noClose = (code) => code.replace(/<\/script/gi, '<\\/script');
@@ -46,7 +63,7 @@ const html = await fs.readFile(path.join(ROOT, 'public/index.html'), 'utf8');
 const css = await fs.readFile(path.join(ROOT, 'public/styles.css'), 'utf8');
 const cy = await fs.readFile(path.join(ROOT, 'node_modules/cytoscape/dist/cytoscape.min.js'), 'utf8');
 const cyDagre = await fs.readFile(path.join(ROOT, 'node_modules/cytoscape-dagre/dist/cytoscape-dagre.js'), 'utf8');
-const title = `P&amp;ID Review — ${result.files.length}개 도면 분석 결과`;
+const title = `P&amp;ID Review — ${fileCount}개 도면 분석 결과`;
 let page = html
   .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
   .replace('<link rel="stylesheet" href="styles.css" />', () => `<style>\n${css}</style>`)
@@ -57,4 +74,4 @@ for (const needle of ['href="styles.css"', 'src="vendor/', 'src="app.js"']) {
   if (page.includes(needle)) throw new Error(`인라인 처리되지 않은 참조: ${needle}`);
 }
 await fs.writeFile(outPath, page);
-console.log(`${outPath} (${(page.length / 1048576).toFixed(1)} MB, 도면 ${pdfs.length}개)`);
+console.log(`${outPath} (${(page.length / 1048576).toFixed(1)} MB, ${bundles.map((b) => `${b.slot || '기본'} 도면 ${b.pdfs.length}개`).join(', ')})`);

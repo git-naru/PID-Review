@@ -116,7 +116,7 @@
   - 이 세트는 **도면 안 글자가 외곽선**이라 텍스트 레이어에 태그·라인 번호가 없다(표제란만 텍스트). 판독 때 bbox를 생략시켜 위치가 비었고, OCR(`scripts/session/ocr-*.py`)로 채웠다. 이제 `hasTagText()`로 판단해 이런 시트는 모델이 bbox를 낸다.
   - Filtering Earth 제조·분배 2장(Rev. N)은 CANCELED, 벤더 패키지 안 라인과 일부 압축공기 시트는 라인 번호 없음
   - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
-- **사용자에게 보낸 결과 HTML**: `POSCO_CP3_PFD_분석결과.html`(물질수지 포함, 최신 화면 기능)
+- **사용자에게 보낸 결과 HTML**: `PID_Review_BL3U_BL2U_분석결과.html`(BL3U · PFD 물질수지 포함, BL2U · PFD, BL2U · P&ID를 한 파일에, 약 224MB). 이전에 묶음별 파일(`POSCO_CP3_PFD_분석결과.html`, `BL2U_PFD_분석결과.html`, `BL2U_PID_분석결과.html`)도 보냈다.
 - **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
 
 ## 4. 채팅 분석 처리 절차
@@ -138,6 +138,7 @@
 9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 준다.
 10. **완료 표시**: `jobs/<문서>`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
 11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html> <묶음 키, 예: BL2U-PFD>` (묶음 키를 주면 그 단위·종류로 열린다)
+    - 여러 묶음을 한 파일에: `node scripts/build-standalone.mjs --multi <out.html> BL3U-PFD <result.json> <PDF 폴더> BL2U-PID <result.json> <PDF 폴더> ...` (공정 단위·PFD / P&ID 선택으로 바꿔 본다, 처음엔 첫 묶음)
 
 **POSCO 결과 HTML 다시 만들기** (새 세션)
 1. 결과 asset `beb65a8b…`과 PDF asset 8개, 물질수지 asset `1f5619f3…`을 `Artifact read`로 받는다.

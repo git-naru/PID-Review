@@ -122,18 +122,35 @@ function initStatic(notice) {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return bytes.buffer;
   };
-  const when = data.result.meta?.analyzedAt ? new Date(data.result.meta.analyzedAt).toLocaleString('ko-KR') : '';
+  // 묶음 키(예: BL2U-PFD) → [단위, 종류]. 모르는 키면 기본 BL3U · PFD
+  const parse = (key) => {
+    const m = /^([A-Z0-9]+)-(PFD|PID)$/i.exec(key || '');
+    return m && [...$('#unitSelect').options].some((o) => o.value === m[1].toUpperCase()) ? [m[1].toUpperCase(), m[2].toLowerCase()] : null;
+  };
+  // 한 파일에 여러 묶음(--multi)이 있으면 공정 단위·PFD / P&ID 선택으로 바꿔 본다. 도면은 처음 열 때 풀어 둔다
+  const bundles = data.bundles || [{ slot: data.slot, result: data.result, pdfs: data.pdfs }];
+  const labels = [];
+  for (const b of bundles.slice(1)) {
+    const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
+    Object.assign(stash(slotKey(unit, doc)), { result: b.result, sources: b.pdfs.map(toBuffer) });
+  }
+  for (const b of bundles) {
+    const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
+    labels.push(`${unit} · ${doc === 'pid' ? 'P&ID' : 'PFD'} ${b.result.files.length}장`);
+  }
+  const first = bundles[0];
+  const when = first.result.meta?.analyzedAt ? new Date(first.result.meta.analyzedAt).toLocaleString('ko-KR') : '';
   notice.hidden = false;
   notice.className = 'notice info';
-  notice.textContent = `보기 전용 파일입니다${when ? ` (분석 ${when})` : ''}. 도면 ${data.result.files.length}개와 분석 결과가 이 파일 안에 들어 있어 인터넷 없이 열 수 있습니다. 새 도면을 분석하려면 원래 페이지를 이용하세요.`;
-  // 파일을 만들 때 지정한 공정 단위·도면 종류(예: BL2U-PFD)로 표시 (없으면 기본 BL3U · PFD)
-  const m = /^([A-Z0-9]+)-(PFD|PID)$/i.exec(data.slot || '');
-  if (m && [...$('#unitSelect').options].some((o) => o.value === m[1].toUpperCase())) {
-    state.unit = m[1].toUpperCase();
-    state.doc = m[2].toLowerCase();
+  notice.textContent = bundles.length > 1
+    ? `보기 전용 파일입니다. ${labels.join(', ')}의 도면과 분석 결과가 이 파일 안에 들어 있어 인터넷 없이 열 수 있습니다. 공정 Flow 옆의 공정 단위와 PFD / P&ID로 바꿔 보세요. 새 도면을 분석하려면 원래 페이지를 이용하세요.`
+    : `보기 전용 파일입니다${when ? ` (분석 ${when})` : ''}. 도면 ${first.result.files.length}개와 분석 결과가 이 파일 안에 들어 있어 인터넷 없이 열 수 있습니다. 새 도면을 분석하려면 원래 페이지를 이용하세요.`;
+  const start = parse(first.slot);
+  if (start) {
+    [state.unit, state.doc] = start;
     markSlot();
   }
-  applyResult(data.result, data.pdfs.map(toBuffer));
+  applyResult(first.result, first.pdfs.map(toBuffer));
 }
 
 // ------------------------------------------------------------------ 업로드
