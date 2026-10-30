@@ -117,6 +117,7 @@ function initStatic(notice) {
   ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect', '#fileHint', '#fileChips', '#emptyHow', '#emptyDemo'].forEach((s) => { $(s).hidden = true; });
   const data = JSON.parse(STATIC_DATA.textContent);
   const toBuffer = (b64) => {
+    if (Uint8Array.fromBase64) return Uint8Array.fromBase64(b64.trim()).buffer; // 지원 브라우저는 내장 디코더(훨씬 빠름)
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -127,12 +128,20 @@ function initStatic(notice) {
     const m = /^([A-Z0-9]+)-(PFD|PID)$/i.exec(key || '');
     return m && [...$('#unitSelect').options].some((o) => o.value === m[1].toUpperCase()) ? [m[1].toUpperCase(), m[2].toLowerCase()] : null;
   };
-  // 한 파일에 여러 묶음(--multi)이 있으면 공정 단위·PFD / P&ID 선택으로 바꿔 본다. 도면은 처음 열 때 풀어 둔다
+  // 한 파일에 여러 묶음(--multi)이 있으면 공정 단위·PFD / P&ID 선택으로 바꿔 본다.
+  // 도면(base64)은 PDF마다 따로 든 <script>에서 그 묶음을 처음 볼 때 풀고, 푼 뒤에는 태그를 지운다.
+  // (예전 형식: data.pdfs에 base64 배열)
   const bundles = data.bundles || [{ slot: data.slot, result: data.result, pdfs: data.pdfs }];
+  const sourcesOf = (b) => () => (b.pdfs || b.pdfIds.map((id) => {
+    const el = document.getElementById(id);
+    const text = el.textContent;
+    el.remove();
+    return text;
+  })).map(toBuffer);
   const labels = [];
   for (const b of bundles.slice(1)) {
     const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
-    Object.assign(stash(slotKey(unit, doc)), { result: b.result, sources: b.pdfs.map(toBuffer) });
+    Object.assign(stash(slotKey(unit, doc)), { result: b.result, sources: [], load: sourcesOf(b) });
   }
   for (const b of bundles) {
     const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
@@ -150,7 +159,7 @@ function initStatic(notice) {
     [state.unit, state.doc] = start;
     markSlot();
   }
-  applyResult(first.result, first.pdfs.map(toBuffer));
+  applyResult(first.result, sourcesOf(first)());
 }
 
 // ------------------------------------------------------------------ 업로드
@@ -743,11 +752,20 @@ function setSlot(unit, doc) {
   renderMbChip();
   closeMbTable();
   if (!$('#viewer').hidden) closeViewer();
-  if (s.result) {
+  const show = () => {
+    if (slotKey() !== next) return; // 기다리는 사이 다른 묶음을 골랐음
+    if (s.load) { s.sources = s.load(); delete s.load; }
     state.result = null; // 보관한 결과도 새 결과처럼 다시 그린다
     applyResult(s.result, s.sources);
     if (s.selected && s.selected.type !== 'free') select(s.selected);
-  } else clearResult();
+  };
+  if (s.result && s.load) {
+    // 보기 전용 파일: 도면을 처음 볼 때 풀고 그린다(큰 묶음은 몇 초). 안내를 먼저 그린 뒤 시작
+    clearResult();
+    $('#slotEmpty').innerHTML = `<b>${esc(slotLabel())}</b> 도면 ${s.result.files.length}장을 불러오는 중입니다…`;
+    setTimeout(show, 60);
+  } else if (s.result) show();
+  else clearResult();
   if (MODE === 'chat') runtime.chat?.setSlot(next);
   else if (MODE !== 'static') renderChips();
 }

@@ -46,16 +46,22 @@ const bundle = await esbuild.build({
 });
 const appJs = bundle.outputFiles[0].text;
 
-// 2) 데이터: 묶음마다 결과 + 도면(base64)
+// 2) 데이터: 묶음마다 결과(JSON) + 도면(base64). 도면은 PDF마다 따로 <script type="text/plain">에 넣는다.
+//    큰 JSON 하나로 넣으면 여는 데 수십 초가 걸리고, 페이지는 보는 묶음의 도면만 풀어 쓴다.
 const bundles = [];
-for (const b of bundleArgs) {
+const pdfTags = [];
+for (const [bi, b] of bundleArgs.entries()) {
   const result = JSON.parse(await fs.readFile(b.resultPath, 'utf8'));
-  const pdfs = [];
-  for (const f of result.files) pdfs.push((await fs.readFile(path.join(b.pdfDir, f.name))).toString('base64'));
-  bundles.push({ slot: b.slot.toUpperCase(), result, pdfs });
+  const pdfIds = [];
+  for (const [fi, f] of result.files.entries()) {
+    const id = `pid-pdf-${bi}-${fi}`;
+    pdfIds.push(id);
+    pdfTags.push(`<script type="text/plain" id="${id}">${(await fs.readFile(path.join(b.pdfDir, f.name))).toString('base64')}</script>`);
+  }
+  bundles.push({ slot: b.slot.toUpperCase(), result, pdfIds });
 }
-const data = JSON.stringify(bundles.length === 1 ? { ...bundles[0] } : { bundles }).replace(/<\//g, '<\\/');
-const fileCount = bundles.reduce((n, b) => n + b.pdfs.length, 0);
+const data = JSON.stringify({ bundles }).replace(/<\//g, '<\\/');
+const fileCount = bundles.reduce((n, b) => n + b.pdfIds.length, 0);
 
 // 3) 페이지: 스타일·스크립트를 모두 인라인
 const noClose = (code) => code.replace(/<\/script/gi, '<\\/script');
@@ -69,9 +75,9 @@ let page = html
   .replace('<link rel="stylesheet" href="styles.css" />', () => `<style>\n${css}</style>`)
   .replace('<script src="vendor/cytoscape.min.js"></script>', () => `<script>${noClose(cy)}</script>`)
   .replace('<script src="vendor/cytoscape-dagre.js"></script>', () => `<script>${noClose(cyDagre)}</script>`)
-  .replace('<script type="module" src="app.js"></script>', () => `<script type="application/json" id="pid-static">${data}</script>\n  <script type="module">${noClose(appJs)}</script>`);
+  .replace('<script type="module" src="app.js"></script>', () => `<script type="application/json" id="pid-static">${data}</script>\n  ${pdfTags.join('\n  ')}\n  <script type="module">${noClose(appJs)}</script>`);
 for (const needle of ['href="styles.css"', 'src="vendor/', 'src="app.js"']) {
   if (page.includes(needle)) throw new Error(`인라인 처리되지 않은 참조: ${needle}`);
 }
 await fs.writeFile(outPath, page);
-console.log(`${outPath} (${(page.length / 1048576).toFixed(1)} MB, ${bundles.map((b) => `${b.slot || '기본'} 도면 ${b.pdfs.length}개`).join(', ')})`);
+console.log(`${outPath} (${(page.length / 1048576).toFixed(1)} MB, ${bundles.map((b) => `${b.slot || '기본'} 도면 ${b.pdfIds.length}개`).join(', ')})`);
