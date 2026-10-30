@@ -191,7 +191,7 @@ shared/   pidText.js(텍스트/좌표) · postprocess.js(검증) · prompts.js(�
 public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아티팩트용 브라우저 분석) · styles.css
 public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시) · pidview.js(Flow 기본 보기: 원본 도면 + 클릭 영역)
 scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat) · build-standalone.mjs(보기 전용 단일 HTML)
-scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs (채팅 세션 분석, Python + pypdfium2 필요)
+scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs · ocr-sheets.py · ocr-place.py (채팅 세션 분석, Python + pypdfium2 필요, OCR은 tesseract)
 shared/   merge.js(시트별 결과 병합) · massbalance.js(물질수지 읽기·매칭) · pdfGeom.js(도면 선 추출·경로 추적)
 samples/  샘플 범례 1장 + P&ID 2장(의도적 결함 포함) · demo-analysis.json · PID-100-MB.xlsx/.csv(샘플 물질수지)
 ```

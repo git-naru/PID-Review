@@ -93,7 +93,7 @@
 - **저장소**: `git-naru/PID-Review`
   - 작업 브랜치는 `claude/sharp-brown-2w1b2p`이다.
   - PR #1, #2 이후 **커밋 약 30개가 `main`에 없다**(PR 미생성).
-  - 테스트 23개가 통과한다.
+  - 테스트 25개가 통과한다.
 - **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
   - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
   - 채팅 분석 페이지에 저장된 데이터
@@ -107,9 +107,15 @@
     - 도면 스트림 1095는 물질수지에 없다.
 - **BL2U · PFD 38장 분석 완료** (Sal de Oro Project Stage 2, `319020-00265-*`, `319020-00367-*`)
   - 결과: 설비 795, 스트림/라인 1,374, 도면 스트림 표 439개(전부 매칭, Li g/L 336개), 검토 항목 491건(높음 91)
-  - db `jobs/BL2U-PFD`: `status: done`, 결과 asset `ffce338683df9f070eb2282ece50af86`, PDF 38개는 결과 JSON `files[].assetId`
+  - db `jobs/BL2U-PFD`: `status: done`, 결과 asset `76286012aaf6319a6750ede8684459f7`(Off-page 짝짓기 개선 후 재병합, 높음 91→66; 이전 `ffce3386…`), PDF 38개는 결과 JSON `files[].assetId`
   - 물질수지 파일 없이 도면 스트림 표로 물질수지를 쓴다. 시트마다 항목 이름이 조금씩 달라 표시 값 목록이 길다(정리 필요).
   - 보낸 파일: `BL2U_PFD_분석결과.html` (`build-standalone.mjs … BL2U-PFD`)
+- **BL2U · P&ID 112장 분석 완료** (범례 4장 f0·f1·f15·f16, Typical 2장 f2·f17 제외, P&ID 106장)
+  - 결과: 설비 783, 계기 3,045, 밸브 542, 라인 2,100, Off-page 연결 525, 검토 항목 4,050건(높음 336)
+  - db `jobs/BL2U-PID`: `status: done`, 결과 asset은 db 문서의 `resultAsset`(OCR 위치 반영본), PDF 112개는 결과 JSON `files[].assetId`
+  - 이 세트는 **도면 안 글자가 외곽선**이라 텍스트 레이어에 태그·라인 번호가 없다(표제란만 텍스트). 판독 때 bbox를 생략시켜 위치가 비었고, OCR(`scripts/session/ocr-*.py`)로 채웠다. 이제 `hasTagText()`로 판단해 이런 시트는 모델이 bbox를 낸다.
+  - Filtering Earth 제조·분배 2장(Rev. N)은 CANCELED, 벤더 패키지 안 라인과 일부 압축공기 시트는 라인 번호 없음
+  - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
 - **사용자에게 보낸 결과 HTML**: `POSCO_CP3_PFD_분석결과.html`(물질수지 포함, 최신 화면 기능)
 - **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
 
@@ -128,6 +134,7 @@
 6. **판독 지시문 생성**: `node scripts/session/make-prompts.mjs <work>`
 7. **시트별 판독**: 시트마다 Agent를 병렬로 띄워 `out/f<fi>-p<p>.json`을 쓰게 한다.
 8. **병합**: `node scripts/session/assemble.mjs <work>`를 실행하면 `result.json`이 생긴다.
+8-1. **(위치가 빈 경우) OCR로 위치 채우기**: 결과에서 설비·라인 위치(`loc.bbox`)가 거의 없으면 도면 글자가 외곽선인 세트다. `apt-get install -y tesseract-ocr` 후 `python3 scripts/session/ocr-sheets.py <work>`(220 dpi, 시트당 약 17초) → `python3 scripts/session/ocr-place.py <work>` → 다시 `assemble.mjs`. 라인 번호는 대부분 잡히고, 계기 버블 안 글자는 잘 안 잡힌다.
 9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 준다.
 10. **완료 표시**: `jobs/<문서>`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
 11. **(선택) 단일 HTML**: `node scripts/build-standalone.mjs <result.json> <PDF 폴더(원래 파일명)> <out.html> <묶음 키, 예: BL2U-PFD>` (묶음 키를 주면 그 단위·종류로 열린다)
@@ -140,8 +147,8 @@
 
 ## 5. 남은 할 일
 1. **PR 생성·머지**: 미머지 커밋을 `main`에 반영한다(사용자 요청 시).
-2. **실제 P&ID 세트(범례 포함)로 판독 정확도 검증**: 지금까지 실제 도면은 PFD만 분석했다.
-3. **대량 세트(약 75장) 처리 확인**: 채팅 분석으로 처리할 때 Agent 동시 실행 수를 조절해야 한다.
+2. **P&ID 판독 정확도 검증**: BL2U P&ID 106장을 처리했다. 사용자 검토 결과에 따라 지시문을 다듬는다. 미연결 높음(250건)은 대부분 라인 끝점이 비어 있는 경우다.
+3. **큰 단일 HTML**: BL2U P&ID는 PDF가 138MB라 단일 HTML이 약 190MB다(열리는 데 1분가량). 필요하면 영역별로 나눠 만드는 기능을 고려한다.
 4. **경로 추적 개선**
    - Line No.가 연결 기호 옆에 있으면 기호 외곽선만 칠해지는 경우가 있다(예: 1번 도면 1214).
    - 같은 색·선 모양의 다른 배관이 표식 없이 이어진 곳에서는 함께 칠해질 수 있다.
