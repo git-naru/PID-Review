@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractPdfText, findTagOnPages } from '../server/pdfText.js';
 import { postprocess } from '../shared/postprocess.js';
+import { hasTagText } from '../shared/pidText.js';
 
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples');
 
@@ -219,4 +220,19 @@ test('배관이 없는 교반기·히터 같은 부속 장치는 미연결로 �
   }, files);
   const un = r.issues.filter((i) => i.title.startsWith('미연결 설비'));
   assert.deepEqual(un.map((i) => [i.related_ids[0], i.severity]).sort(), [['P2', 'low'], ['X', 'high']]);
+});
+
+test('텍스트 레이어 없는 시트의 Off-page가 참조 도면(표제란) 쪽으로 옮겨 가지 않는다', async () => {
+  const { files, raw } = await loadSamples();
+  files[1] = { ...files[1], text: { ...files[1].text, pages: files[1].text.pages.map((p) => ({ ...p, runs: [] })) } };
+  const r = postprocess(raw, files);
+  const opc = r.nodes.find((n) => n.id === 'OPC:PID-100-001:1');
+  assert.equal(opc.loc.file_index, 1);
+});
+
+test('태그가 텍스트로 들어 있는 페이지만 텍스트 레이어로 본다 (표제란만 텍스트인 CAD 출력은 제외)', async () => {
+  const { files } = await loadSamples();
+  assert.equal(hasTagText(files[1].text.pages[0]), true);
+  const titleOnly = { runs: [{ text: '319020-00265-2100-PI-PID-00201' }, { text: 'SAL DE ORO PROJECT STAGE 2 - DETAILED ENGINEERING' }, { text: 'FIT' }, { text: '1186' }] };
+  assert.equal(hasTagText(titleOnly), false);
 });

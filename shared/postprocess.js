@@ -303,32 +303,53 @@ export function postprocess(raw, files) {
 }
 
 /**
- * 번호 없는 연결끼리 짝짓기: 연결 이름과 이어진 라인의 Service 단어가 가장 많이 겹치는 후보 (동점이면 포기)
+ * 번호 없는 연결끼리 짝짓기: 연결 이름과 이어진 라인의 Service 단어가 가장 많이 겹치는 후보들.
+ * 계기·설비 태그(LI-3850, 6100-PU-006)는 2점. 동점이면 모두 돌려준다(한 신호가 여러 곳으로 가는 경우).
  */
 function bestByWords(a, candidates, lines) {
-  const STOP = new Set(['TO', 'FROM', 'THE', 'AND', 'OF', 'NO', 'STREAM', 'SOLUTION', 'OP', 'PFD']);
-  const words = (n) => new Set(`${n.name} ${lines.filter((l) => l.from_id === n.id || l.to_id === n.id).map((l) => l.service).join(' ')}`
-    .toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length > 1 && !STOP.has(w) && !/^\d{3,}$/.test(w)));
+  const STOP = new Set(['TO', 'FROM', 'THE', 'AND', 'OF', 'NO', 'STREAM', 'SOLUTION', 'OP', 'PFD', 'SIGNAL']);
+  const TAG = /\b(?:\d{3,5}-)?[A-Z]{1,5}-\d{2,5}[A-Z]?\b/g;
+  const words = (n) => {
+    const text = `${n.name} ${lines.filter((l) => l.from_id === n.id || l.to_id === n.id).map((l) => l.service).join(' ')}`.toUpperCase();
+    const w = new Map();
+    for (const x of text.split(/[^A-Z0-9]+/)) if (x.length > 1 && !STOP.has(x) && !/^\d{3,}$/.test(x)) w.set(x, 1);
+    for (const t of text.match(TAG) || []) w.set(t, 2);
+    return w;
+  };
   const aw = words(a);
-  const scored = candidates.map((b) => ({ b, score: [...words(b)].filter((w) => aw.has(w)).length })).sort((x, y) => y.score - x.score);
-  return scored[0]?.score > 0 && scored[0].score > (scored[1]?.score ?? 0) ? scored[0].b : null;
+  const scored = candidates.map((b) => {
+    let score = 0;
+    for (const [x, v] of words(b)) if (aw.has(x)) score += v;
+    return { b, score };
+  }).sort((x, y) => y.score - x.score);
+  const top = scored[0]?.score ?? 0;
+  return top > 0 ? scored.filter((x) => x.score === top).map((x) => x.b) : [];
 }
+
+// 도면 번호 비교용: 숫자 앞의 0을 떼고 구분자를 통일 (PID-0004 와 PID-00004 를 같게)
+const dwgKey = (s) => String(s ?? '').toUpperCase().replace(/\d+/g, (d) => String(Number(d))).replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+const refersTo = (text, key) => key && `-${text}-`.includes(`-${key}-`);
 
 function pairOffpages(nodes, lines, drawings, ruleIssues) {
   const offpages = nodes.filter((n) => n.category === 'offpage');
   const drawingOf = (n) => drawings.find((d) => d.file_index === n.loc.file_index && d.page === n.loc.page)
     || drawings.find((d) => d.file_index === n.loc.file_index);
-  const refText = (n) => normalizeTag(n.offpage_ref || n.name || n.tag);
-  const known = drawings.map((d) => normalizeTag(d.drawing_no)).filter(Boolean);
+  const refText = (n) => dwgKey(n.offpage_ref || n.name || n.tag);
+  const known = drawings.map((d) => dwgKey(d.drawing_no)).filter(Boolean);
   const lineNosOf = (n) => new Set(lines.filter((l) => l.from_id === n.id || l.to_id === n.id).map((l) => normalizeTag(l.line_no)).filter(Boolean));
 
   const links = [];
   const paired = new Set();
+  const link = (a, b) => {
+    paired.add(a.id); paired.add(b.id);
+    const aIsSource = lines.some((l) => l.to_id === a.id);
+    links.push({ id: `LINK:${a.id}~${b.id}`, from_id: aIsSource ? a.id : b.id, to_id: aIsSource ? b.id : a.id });
+  };
   for (const a of offpages) {
     if (paired.has(a.id)) continue;
     const aRef = refText(a);
-    const aDwg = normalizeTag(drawingOf(a)?.drawing_no);
-    const targetDwg = known.find((k) => aRef.includes(k) && k !== aDwg);
+    const aDwg = dwgKey(drawingOf(a)?.drawing_no);
+    const targetDwg = known.find((k) => k !== aDwg && refersTo(aRef, k));
     if (!targetDwg) {
       ruleIssues.push({
         severity: 'medium', category: 'offpage_unmatched',
@@ -338,31 +359,39 @@ function pairOffpages(nodes, lines, drawings, ruleIssues) {
       });
       continue;
     }
-    const candidates = offpages.filter((b) => b !== a && !paired.has(b.id)
-      && normalizeTag(drawingOf(b)?.drawing_no) === targetDwg
-      && (!aDwg || refText(b).includes(aDwg)));
+    const onTarget = offpages.filter((b) => b !== a && dwgKey(drawingOf(b)?.drawing_no) === targetDwg);
+    const candidates = onTarget.filter((b) => !paired.has(b.id) && (!aDwg || refersTo(refText(b), aDwg)));
     const aLines = lineNosOf(a);
-    const best = candidates.find((b) => [...lineNosOf(b)].some((ln) => aLines.has(ln)))
-      || (candidates.length === 1 ? candidates[0] : bestByWords(a, candidates, lines));
-    if (best) {
-      paired.add(a.id); paired.add(best.id);
-      const aIsSource = lines.some((l) => l.to_id === a.id);
-      links.push({ id: `LINK:${a.id}~${best.id}`, from_id: aIsSource ? a.id : best.id, to_id: aIsSource ? best.id : a.id });
-    } else {
-      ruleIssues.push({
-        severity: 'high', category: 'offpage_unmatched',
-        title: `대응 Off-page 없음 (${a.offpage_ref || a.name || a.tag})`,
-        description: `${nodeLabel(a)}가 참조하는 도면에서 되돌아오는 Off-page 연결(또는 동일 라인 번호)을 찾을 수 없습니다.`,
-        related_ids: [a.id],
-      });
+    const byLine = candidates.find((b) => [...lineNosOf(b)].some((ln) => aLines.has(ln)));
+    const best = byLine ? [byLine] : candidates.length === 1 ? candidates : bestByWords(a, candidates, lines);
+    if (best.length) {
+      for (const b of best) link(a, b);
+      continue;
     }
+    // 상대 시트의 연결이 이미 다른 짝과 이어진 경우(한 연결로 여러 신호가 합쳐짐)는 그쪽에 붙인다
+    const shared = bestByWords(a, onTarget.filter((b) => paired.has(b.id) && (!aDwg || refersTo(refText(b), aDwg))), lines);
+    if (shared.length) {
+      for (const b of shared) link(a, b);
+      continue;
+    }
+    ruleIssues.push({
+      severity: 'high', category: 'offpage_unmatched',
+      title: `대응 Off-page 없음 (${a.offpage_ref || a.name || a.tag})`,
+      description: `${nodeLabel(a)}가 참조하는 도면에서 되돌아오는 Off-page 연결(또는 동일 라인 번호)을 찾을 수 없습니다.`,
+      related_ids: [a.id],
+    });
   }
   return links;
 }
 
 function locate(item, candidates, files, skipPages) {
+  // 시트가 정해진 항목은 그 시트에서만 찾는다. 다른 파일까지 뒤지면 Off-page의 참조 도면 번호가
+  // 그 도면의 표제란에 걸려, 연결 기호가 참조 대상 시트로 옮겨 가 버린다(텍스트 레이어 없는 시트에서 흔함).
+  // 시트가 없거나 범례 시트로 잘못 지정된 경우에만 다른 파일까지 찾는다.
   const f = files[item.loc.file_index];
-  const searchFiles = f ? [[item.loc.file_index, f], ...files.map((x, i) => [i, x]).filter(([i]) => i !== item.loc.file_index)] : files.map((x, i) => [i, x]);
+  const pinned = f && !skipPages.has(`${item.loc.file_index}:${item.loc.page}`);
+  const searchFiles = pinned ? [[item.loc.file_index, f]]
+    : f ? [[item.loc.file_index, f], ...files.map((x, i) => [i, x]).filter(([i]) => i !== item.loc.file_index)] : files.map((x, i) => [i, x]);
   for (const text of candidates) {
     if (!text || normalizeTag(text).length < 3) continue;
     for (const [fi, file] of searchFiles) {

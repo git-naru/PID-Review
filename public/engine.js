@@ -6,7 +6,7 @@
 // - 한 시트가 실패해도 전체를 멈추지 않는다. 결과가 길어 잘리면 시트를 둘로 나눠 다시 판독한다.
 // - 사용 한도·권한 같은 계정 문제만 전체를 멈추고, 그때까지의 결과는 그대로 보여준다.
 // - 두 시트씩 동시에 판독하고, 진행 중에도 완료된 시트까지의 결과를 화면에 반영한다.
-import { extractTextFromDocument, pageTextForPrompt } from './shared/pidText.js';
+import { extractTextFromDocument, pageTextForPrompt, hasTagText } from './shared/pidText.js';
 import { classifyPrompt, legendPrompt, sheetPrompt, PFD_NOTE } from './shared/prompts.js';
 import { postprocess } from './shared/postprocess.js';
 import { emptyLegend, mergeLegend, compactLegend, mergeSheets, combineOutputs, str } from './shared/merge.js';
@@ -218,7 +218,7 @@ async function askSheet({ s, files, docs, maxImages, legendJson, drawingsList, p
     legendJson,
     drawingsList,
     textLayer: pageTextForPrompt(textPage, PROMPT_TEXT_BUDGET - legendJson.length - drawingsList.length),
-    hasTextLayer: page.runs.length > 0 && docType !== 'pfd',
+    hasTextLayer: hasTagText(page) && docType !== 'pfd',
     region,
     imageNote: note,
     docNote: docType === 'pfd' ? PFD_NOTE : '',

@@ -106,6 +106,22 @@ function mergeRuns(items) {
   return out;
 }
 
+/**
+ * 태그·라인 번호가 텍스트로 들어 있는 페이지인가.
+ * 표제란만 텍스트이고 도면 안 글자는 선(외곽선)으로 그려진 CAD 출력도 많아, run 유무만으로는 판단하지 않는다.
+ * 하이픈으로 이어진 영문+숫자 run(P-101A, 2100-PU-105, 4"-P-1005-A1A)이 5개 이상이면 텍스트 레이어로 본다.
+ */
+export function hasTagText(pg) {
+  const TAG = /^(?=.*[A-Z])(?=.*\d)[A-Z0-9"#./]+(?:-[A-Z0-9"#./]+)+$/;
+  const DWG = /PID-\d|PFD-\d|\d{6}-\d{5}/;
+  let n = 0;
+  for (const r of pg?.runs ?? []) {
+    const t = String(r.text ?? '').replace(/\s+/g, '').toUpperCase();
+    if (TAG.test(t) && !DWG.test(t) && ++n >= 5) return true;
+  }
+  return false;
+}
+
 /** Claude에 전달할 압축된 텍스트 레이어 설명 (파일 전체) */
 export function textLayerForPrompt(fileIndex, fileName, extracted) {
   const lines = [`### FILE ${fileIndex} (${fileName}) - ${extracted.pageCount} page(s)`];
