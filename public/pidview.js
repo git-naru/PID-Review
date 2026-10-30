@@ -282,19 +282,58 @@ export function createPidView(container, ui) {
     }
     return seq === v.seq ? off : null;
   }
+  /** 도면 전체 그림의 배율: 화면 맞춤 크기의 2배 해상도(최대 4096px) */
+  const baseScaleOf = (pw, ph) => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const fit = Math.min(container.clientWidth / pw, container.clientHeight / ph) || 1;
+    return Math.min(fit * dpr * 2, BASE_CANVAS_PX / pw, BASE_CANVAS_PX / ph);
+  };
+  // 미리 그려 둔 도면 전체 그림 (이전·다음 도면, 그리고 방금 보던 도면): 넘길 때 바로 바꿔 끼운다
+  const prerendered = new Map(); // baseKey → canvas
+  const keepCanvas = (bk, c) => {
+    prerendered.delete(bk);
+    prerendered.set(bk, c);
+    while (prerendered.size > 4) prerendered.delete(prerendered.keys().next().value);
+  };
+  // 지금 도면이 그려진 뒤에 미리 읽기·그리기를 시작한다 (같이 하면 지금 도면이 늦게 뜬다)
+  let painted = Promise.resolve(), paintedDone = () => {};
+  let preQueue = Promise.resolve();
+  function prerender(key, page) {
+    preQueue = preQueue.then(async () => {
+      if (!v.result || key === v.key) return;
+      const vp1 = page.getViewport({ scale: 1 });
+      const scale = baseScaleOf(vp1.width, vp1.height);
+      const bk = `${key}@${scale.toFixed(2)}`;
+      if (prerendered.has(bk)) return;
+      const vp = page.getViewport({ scale });
+      const off = document.createElement('canvas');
+      off.width = Math.round(vp.width);
+      off.height = Math.round(vp.height);
+      try {
+        await page.render({ canvasContext: off.getContext('2d'), viewport: vp, background: '#ffffff' }).promise;
+        keepCanvas(bk, off);
+      } catch { /* 넘어가면 그때 그린다 */ }
+    });
+  }
+
   async function render() {
     if (!v.page) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const fitScale = v.W / v.pw; // 화면 맞춤일 때 CSS px / PDF pt
-    const baseScale = Math.min(fitScale * dpr * 2, BASE_CANVAS_PX / v.pw, BASE_CANVAS_PX / v.ph);
+    const baseScale = baseScaleOf(v.pw, v.ph);
     const seq = ++v.seq;
     const key = v.key;
     const baseKey = `${key}@${baseScale.toFixed(2)}`;
     if (v.rendered !== baseKey) {
-      const off = await draw(baseScale, [0, 0, 1, 1], seq);
+      const ready = prerendered.get(baseKey);
+      const off = ready || await draw(baseScale, [0, 0, 1, 1], seq);
       if (!off || v.key !== key) return;
+      prerendered.delete(baseKey);
+      if (v.rendered && canvas.width) keepCanvas(v.rendered, canvas); // 방금 보던 도면: 되돌아갈 때 바로
       canvas = swapIn(canvas, off, 'pv-canvas');
+      canvas.style.visibility = '';
       v.rendered = baseKey;
+      paintedDone();
       detail.hidden = true;
       detailKey = '';
     }
@@ -495,16 +534,16 @@ export function createPidView(container, ui) {
   function prefetch(key) {
     if (!v.result || !key || key === 'all' || geoms.has(key)) return;
     const [fi, p] = key.split(':').map(Number);
-    setTimeout(() => {
+    painted.then(() => setTimeout(() => {
       if (geoms.has(key) || !v.result) return;
       ui.getPdf(fi).then((doc) => doc.getPage(p)).then((page) => {
         if (geoms.has(key)) return;
         keepWarm(key, page);
-        page.getOperatorList().catch(() => {}); // 화면 그리기용 연산 목록 (render가 같은 것을 다시 쓴다)
+        prerender(key, page); // 화면 그리기용 연산 목록도 이때 만들어진다
         geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
         textOf(page, key);
       }).catch(() => {});
-    }, 600);
+    }, 150));
   }
 
   async function setPage(key) {
@@ -512,7 +551,9 @@ export function createPidView(container, ui) {
     if (key !== v.key) {
       const [fi, p] = key.split(':').map(Number);
       v.key = key;
-      v.rendered = '';
+      // 보던 도면 그림은 넘어간 도면이 그려질 때 보관된다(되돌아가기용). 그 사이 옛 도면이 새 표시와 겹쳐 보이지 않게 가린다
+      canvas.style.visibility = 'hidden';
+      painted = new Promise((r) => { paintedDone = r; });
       detail.hidden = true;
       detailKey = '';
       freeTrace = null;
@@ -526,7 +567,8 @@ export function createPidView(container, ui) {
         if (v.key !== key) return;
         v.page = page;
         keepWarm(key, page);
-        if (!geoms.has(key)) geoms.set(key, extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util).catch(() => null));
+        // 선 데이터(경로 추적용)는 도면이 그려진 뒤에 뽑는다 (같은 도면을 한 번 더 해석하므로)
+        if (!geoms.has(key)) geoms.set(key, painted.then(() => extractGeometry(page, ui.pdfjs.OPS, ui.pdfjs.Util)).catch(() => null));
         readyGeom = null;
         mainSvg.innerHTML = '';
         geoms.get(key).then((geom) => { if (geom && v.key === key) { readyGeom = { key, geom }; warm(); drawMain(page, geom, key); } });
@@ -568,7 +610,7 @@ export function createPidView(container, ui) {
       v.result = result;
       traces.clear();
       if (readyGeom) warm();
-      if (reload) { v.key = null; views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); warmPages.clear(); }
+      if (reload) { v.key = null; v.rendered = ''; views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); warmPages.clear(); prerendered.clear(); }
       return setPage(key);
     },
     setPage,
@@ -592,7 +634,7 @@ export function createPidView(container, ui) {
       v.seq++;
       v.task?.cancel();
       Object.assign(v, { result: null, key: null, page: null, rendered: '' });
-      views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); warmPages.clear();
+      views.clear(); geoms.clear(); traces.clear(); texts.clear(); notes.clear(); warmPages.clear(); prerendered.clear();
       readyGeom = null;
       freeTrace = null;
       selected = new Set();

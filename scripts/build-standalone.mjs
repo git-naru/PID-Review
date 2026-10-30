@@ -49,14 +49,15 @@ const appJs = bundle.outputFiles[0].text;
 // 2) 데이터: 묶음마다 결과(JSON) + 도면(base64). 도면은 PDF마다 따로 <script type="text/plain">에 넣는다.
 //    큰 JSON 하나로 넣으면 여는 데 수십 초가 걸리고, 페이지는 보는 묶음의 도면만 풀어 쓴다.
 const bundles = [];
-const pdfTags = [];
+const pdfTags = []; // 묶음마다 [<script> ...]
 for (const [bi, b] of bundleArgs.entries()) {
+  pdfTags.push([]);
   const result = JSON.parse(await fs.readFile(b.resultPath, 'utf8'));
   const pdfIds = [];
   for (const [fi, f] of result.files.entries()) {
     const id = `pid-pdf-${bi}-${fi}`;
     pdfIds.push(id);
-    pdfTags.push(`<script type="text/plain" id="${id}">${(await fs.readFile(path.join(b.pdfDir, f.name))).toString('base64')}</script>`);
+    pdfTags[bi].push(`<script type="text/plain" id="${id}">${(await fs.readFile(path.join(b.pdfDir, f.name))).toString('base64')}</script>`);
   }
   bundles.push({ slot: b.slot.toUpperCase(), result, pdfIds });
 }
@@ -82,7 +83,13 @@ let page = html
   .replace('<link rel="stylesheet" href="styles.css" />', () => `<style>\n${css}</style>`)
   .replace('<script src="vendor/cytoscape.min.js"></script>', () => `<script>${noClose(cy)}</script>`)
   .replace('<script src="vendor/cytoscape-dagre.js"></script>', () => `<script>${noClose(cyDagre)}</script>`)
-  .replace('<script type="module" src="app.js"></script>', () => `<script type="application/json" id="pid-static">${data}</script>\n  ${pdfTags.join('\n  ')}\n  <script type="text/plain" id="pid-pdf-worker">${noClose(pdfWorker)}</script>\n  <script type="module">${noClose(appJs)}</script>`);
+  // 프로그램은 파일을 다 읽은 뒤에 시작한다. (읽는 도중에 시작하게 해 봤더니 읽기와 그리기가 서로 느려져 첫 화면이 더 늦었다)
+  .replace('<script type="module" src="app.js"></script>', () => [
+    `<script type="application/json" id="pid-static">${data}</script>`,
+    ...pdfTags.flat(),
+    `<script type="text/plain" id="pid-pdf-worker">${noClose(pdfWorker)}</script>`,
+    `<script type="module">${noClose(appJs)}</script>`,
+  ].join('\n  '));
 for (const needle of ['href="styles.css"', 'src="vendor/', 'src="app.js"']) {
   if (page.includes(needle)) throw new Error(`인라인 처리되지 않은 참조: ${needle}`);
 }

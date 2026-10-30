@@ -39,7 +39,7 @@ const CONF_LABEL = { high: '높음', medium: '보통', low: '낮음' };
 
 const state = {
   pending: [], // 분석 대기 중인 File 목록
-  sources: [], // 분석에 사용된 PDF 원본 (ArrayBuffer) - file_index 순서
+  sources: [], // 분석에 사용된 PDF 원본 - file_index 순서. ArrayBuffer, 또는 볼 때 받는 함수(() => Promise<ArrayBuffer>, lazySource)
   result: null,
   tab: 'equipment',
   sev: 'all',
@@ -88,6 +88,7 @@ async function init() {
       setRunAction: (fn) => { runAction = fn; },
       setDownloads: (d) => { runtime.downloads = d; },
       setMassBalance: (mb, opts) => setMassBalance(mb, opts),
+      lazySource,
       setSearchData: (slot, result) => { searchOnly.set(slot, result); if (!$('#flowSearchList').hidden) renderSearch(); },
     });
     runtime.chat.setSlot(slotKey());
@@ -135,13 +136,18 @@ function initStatic(notice) {
   // 한 파일에 여러 묶음(--multi)이 있으면 공정 단위·PFD / P&ID 선택으로 바꿔 본다.
   // 도면(base64)은 PDF마다 따로 든 <script>에서 그 묶음을 처음 볼 때 풀고, 푼 뒤에는 태그를 지운다.
   // (예전 형식: data.pdfs에 base64 배열)
+  // 파일을 다 읽기 전에 시작하므로(첫 묶음 도면 다음에 프로그램, 그 뒤에 나머지 묶음), 아직 안 읽힌 도면은 다 읽은 뒤에 푼다
   const bundles = data.bundles || [{ slot: data.slot, result: data.result, pdfs: data.pdfs }];
-  const sourcesOf = (b) => () => (b.pdfs || b.pdfIds.map((id) => {
+  const parsed = () => (document.readyState === 'loading' ? new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true })) : null);
+  const fromTag = (id) => lazySource(async () => {
+    if (!document.getElementById(id)) await parsed();
     const el = document.getElementById(id);
-    const text = el.textContent;
+    if (!el) throw new Error('파일 안에서 도면을 찾지 못했습니다.');
+    const buf = toBuffer(el.textContent);
     el.remove();
-    return text;
-  })).map(toBuffer);
+    return buf;
+  });
+  const sourcesOf = (b) => () => (b.pdfs ? b.pdfs.map(toBuffer) : b.pdfIds.map(fromTag));
   const labels = [];
   for (const b of bundles.slice(1)) {
     const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
@@ -1985,17 +1991,25 @@ function bindViewer() {
 
 const clampSpan = (s) => Math.min(1, Math.max(0.04, s));
 
+/** 볼 때 받는 도면: 처음 부를 때 한 번만 받고 그 뒤로는 같은 버퍼 (실패하면 다음에 다시 받음) */
+function lazySource(fetcher) {
+  let p = null;
+  return () => (p ||= Promise.resolve().then(fetcher).catch((e) => { p = null; throw e; }));
+}
+
 function getPdf(fileIndex) {
   if (!state.pdfDocs.has(fileIndex)) {
     const src = state.sources[fileIndex];
     if (!src) return Promise.reject(new Error('원본 PDF를 찾을 수 없습니다.'));
     // pdf.js가 버퍼를 워커로 넘기므로 사본 전달. 워커 준비를 기다리는 동안 닫혀도(destroy) 되도록 감싼다
     const task = { inner: null, closed: false, destroy() { task.closed = true; return task.inner?.destroy(); } };
-    task.promise = pdfWorkerReady.then(() => {
+    task.promise = Promise.all([pdfWorkerReady, typeof src === 'function' ? src() : src]).then(([, data]) => {
       if (task.closed) throw new Error('도면 보기가 닫혔습니다.');
-      task.inner = pdfjsLib.getDocument({ data: src.slice(0), ...PDF_OPTIONS });
+      task.inner = pdfjsLib.getDocument({ data: data.slice(0), ...PDF_OPTIONS });
       return task.inner.promise;
     });
+    // 받기에 실패하면 다음에 다시 시도할 수 있게 비운다
+    task.promise.catch(() => { if (state.pdfDocs.get(fileIndex) === task) state.pdfDocs.delete(fileIndex); });
     state.pdfDocs.set(fileIndex, task);
   }
   return state.pdfDocs.get(fileIndex).promise;

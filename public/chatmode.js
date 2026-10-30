@@ -201,7 +201,8 @@ export async function setupChatMode(ui) {
       const res = await fetch(`/_blob/${resultAsset}`);
       if (!res.ok) throw new Error(String(res.status));
       const result = await res.json();
-      const sources = await Promise.all(result.files.map(async (f) => {
+      // 도면 PDF는 볼 때 그 장만 받는다 (전부 받고 시작하면 큰 묶음은 수십 초)
+      const sources = result.files.map((f) => ui.lazySource(async () => {
         const r = await fetch(`/_blob/${f.assetId}`);
         if (!r.ok) throw new Error(`${f.name}: ${r.status}`);
         return r.arrayBuffer();
