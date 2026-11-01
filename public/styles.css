@@ -192,6 +192,15 @@ button { font: inherit; }
 .slot-empty { font-size: 14px; }
 /* 이전 / 다음 도면: 넘길 도면이 없으면 회색으로만 (경고 없음) */
 .pager { display: inline-flex; align-items: center; gap: 4px; }
+/* 공정 Flow 제목 줄: 제목·Option·PFD/P&ID·검색과 도구 막대를 한 줄에 (넓은 화면). 좁으면 자연스럽게 다음 줄로 */
+.flow-card .card-head { justify-content: flex-start; gap: 8px; }
+.flow-card .flow-title, .flow-card .card-head .toolbar { display: contents; }
+.flow-card #flowMode { margin-left: auto; }
+.flow-card .flow-search input { width: 180px; }
+.flow-card .pager .btn { min-width: 30px; padding: 4px 0; }
+.flow-card #drawingFilter { max-width: 150px; }
+.flow-card #flowValue { max-width: 130px; }
+.flow-card .toolbar > .btn.small { padding: 4px 8px; }
 .pager .btn:disabled { opacity: 1; background: var(--surface-2); color: var(--muted); border-color: var(--border); cursor: default; }
 /* 올리기 전 공정 단위 · PFD / P&ID 선택 창 */
 .modal-box.slot-box { width: min(440px, 100%); gap: 10px; }

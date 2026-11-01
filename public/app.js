@@ -812,7 +812,7 @@ function markSlot() {
   // 검색은 공정 단위 전체(PFD·P&ID)라 단위가 바뀔 때만 비운다
   if (search.unit !== state.unit) closeSearch(true);
   search.unit = state.unit;
-  $('#flowSearch').placeholder = 'Stream·설비 검색 (PFD·P&ID)';
+  $('#flowSearch').placeholder = 'Stream·설비 검색';
   document.querySelectorAll('#docPick [data-doc]').forEach((b) => {
     b.classList.toggle('active', b.dataset.doc === state.doc);
     b.setAttribute('aria-pressed', String(b.dataset.doc === state.doc));
@@ -830,7 +830,7 @@ function clearResult() {
   $('#zoomBtns').hidden = true;
   $('#slotEmpty').hidden = false;
   $('#slotEmpty').innerHTML = MODE === 'static' && runtime.staticLabels
-    ? `<b>${esc(slotLabel())}</b> 자료는 이 파일에 없습니다. (이 파일에 든 자료: ${esc(runtime.staticLabels.join(', '))})`
+    ? `<b>${esc(slotLabel())}</b> 자료는 이 파일에 없습니다. (이 파일에 든 자료: ${esc(runtime.staticLabels.join(', '))})<br>이 파일은 보기 전용입니다. 도면 올리기와 분석 요청은 채팅 분석 페이지에서 하세요.`
     : `<b>${esc(slotLabel())}</b> 자료가 아직 없습니다.`;
   $('#summary').hidden = true;
   $('#statusBar').hidden = $('#runBox').hidden && $('#progress').hidden;
@@ -1278,7 +1278,7 @@ function revealPick(sel) {
 
 function bindSearch() {
   const input = $('#flowSearch'), list = $('#flowSearchList');
-  input.placeholder = 'Stream·설비 검색 (PFD·P&ID)';
+  input.placeholder = 'Stream·설비 검색';
   let t = null;
   input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(renderSearch, 120); });
   input.addEventListener('focus', () => { if (input.value.trim()) renderSearch(); });
