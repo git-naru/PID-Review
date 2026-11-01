@@ -12,6 +12,7 @@
 // 공정 단위(BL1U ~ BL3U) × 도면 종류(PFD, P&ID)마다 따로 둔다 (묶음 키 예: "BL1U-PID").
 //   files/<assetId>.slot 에 묶음 키 (없으면 기본 묶음 BL3U-PFD: 단위 구분 전에 올린 도면)
 //   jobs/<문서>, massbalance/<문서>: 기본 묶음은 "current", 나머지는 묶음 키 그대로
+import { slotLabel } from './units.js';
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
@@ -258,7 +259,6 @@ export async function setupChatMode(ui) {
   return { upload, request, saveMassBalance, setSlot, refresh: renderFiles };
 }
 
-const slotLabel = (key) => key.replace('-PFD', ' · PFD').replace('-PID', ' · P&ID');
 
 function uploadErrorMessage(e) {
   switch (e?.code) {

@@ -49,7 +49,9 @@
 - **Flow 보기 방식**: [기본 | 자동배치], 기본값은 **기본**이다(원본 PDF 도면 위에 표시).
   - 도면마다 확대·이동 상태를 기억한다. 처음에는 폭맞춤으로 열린다.
   - 도구 막대에 **폭맞춤**과 **화면 맞춤** 버튼이 있다.
-- **공정 단위 · 도면 종류**: 공정 Flow 제목 오른쪽에 단위 드롭박스(BL1U, BL1D, BL2U, BL2D, HL1U, HL1D, BL3U)와 글씨 **PFD / P&ID**를 둔다.
+- **BL3U 전용 · Option 1 / Option 2** (사용자 요청, 11/1): 공정 Flow 오른쪽 드롭박스는 공정 단위 대신 **Option 1 / Option 2**(`public/units.js`). 저장 키는 Option 1 = `BL3U`(기존 BL3U 자료 그대로, db `jobs/current`·`massbalance/current`), Option 2 = `BL3U_OP2`(db `jobs/BL3U_OP2-PFD` 등). 화면·채팅 문구는 "Option 2 · PFD"처럼 쓴다. 사용자가 "Option 2 · PFD 분석 요청했어"라고 하면 묶음 키는 `BL3U_OP2-PFD`.
+  - BL2U 결과(db `jobs/BL2U-PFD`, `jobs/BL2U-PID`)는 그대로 남아 있지만 드롭박스에서는 고를 수 없다. 단일 HTML은 목록에 없는 묶음이 들어 있으면 드롭박스에 덧붙인다(`fillUnits`).
+- (이전) **공정 단위 · 도면 종류**: 공정 Flow 제목 오른쪽에 단위 드롭박스(BL1U, BL1D, BL2U, BL2D, HL1U, HL1D, BL3U)와 글씨 **PFD / P&ID**를 둔다.
   - 고른 종류만 색으로 표시한다(PFD 파랑, P&ID 초록).
   - 단위 × 도면 종류(묶음 키 `BL1U-PID` 등)마다 도면·결과·물질수지를 따로 둔다. 처음 화면은 **BL3U · PFD**다.
   - 지금 저장된 POSCO CP3 PFD와 물질수지는 BL3U · PFD에 속한다.
@@ -129,7 +131,8 @@
   - 이 세트는 **도면 안 글자가 외곽선**이라 텍스트 레이어에 태그·라인 번호가 없다(표제란만 텍스트). 판독 때 bbox를 생략시켜 위치가 비었고, OCR(`scripts/session/ocr-*.py`)로 채웠다. 이제 `hasTagText()`로 판단해 이런 시트는 모델이 bbox를 낸다.
   - Filtering Earth 제조·분배 2장(Rev. N)은 CANCELED, 벤더 패키지 안 라인과 일부 압축공기 시트는 라인 번호 없음
   - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
-- **사용자에게 보낸 결과 HTML (최신, 공정 단위별)**: `BL3U_분석결과.html`(BL3U · PFD, 약 9MB, 첫 도면 약 2.7초), `BL2U_분석결과.html`(BL2U · PFD + P&ID, 약 220MB). 사용자 요청으로 단위별로 나눴다(채팅 분석 페이지는 그대로). 다른 단위를 고르면 "이 파일에 없습니다(이 파일에 든 자료: …)"로 안내.
+- **사용자에게 보낸 결과 HTML (최신)**: `BL3U_PFD Review.html`(BL3U Option 1 · PFD, 물질수지 포함). 파일 이름은 사용자 지정, 탭 제목은 파일 이름. 보기 전용 파일은 위쪽 안내·물질수지 줄·요약 문단을 숨기고 숫자 칩만 남긴다(`body.static-view`).
+- 그 전: `BL3U_분석결과.html`(BL3U · PFD, 약 9MB, 첫 도면 약 2.7초), `BL2U_분석결과.html`(BL2U · PFD + P&ID, 약 220MB). 사용자 요청으로 단위별로 나눴다(채팅 분석 페이지는 그대로). 다른 단위를 고르면 "이 파일에 없습니다(이 파일에 든 자료: …)"로 안내.
 - 이전에 보낸 통합 HTML: `PID_Review_BL3U_BL2U_분석결과.html`(BL3U · PFD 물질수지 포함, BL2U · PFD, BL2U · P&ID를 한 파일에, 약 224MB). 이전에 묶음별 파일(`POSCO_CP3_PFD_분석결과.html`, `BL2U_PFD_분석결과.html`, `BL2U_PID_분석결과.html`)도 보냈다.
 - **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
 

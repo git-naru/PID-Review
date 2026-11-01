@@ -77,7 +77,8 @@ const pdfWorker = (await esbuild.build({
   bundle: true, format: 'iife', globalName: 'pdfjsWorkerModule', minify: true, write: false, logLevel: 'error',
   define: { 'import.meta.url': 'self.location.href' },
 })).outputFiles[0].text;
-const title = `P&amp;ID Review — ${fileCount}개 도면 분석 결과`;
+// 브라우저 탭 제목은 파일 이름으로 (예: "BL3U_PFD Review")
+const title = path.basename(outPath).replace(/\.html?$/i, '').replace(/&/g, '&amp;').replace(/</g, '&lt;') || `P&amp;ID Review — ${fileCount}개 도면 분석 결과`;
 let page = html
   .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
   .replace('<link rel="stylesheet" href="styles.css" />', () => `<style>\n${css}</style>`)

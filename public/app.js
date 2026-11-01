@@ -4,6 +4,7 @@ import { setupChatMode } from './chatmode.js';
 import { normalizeTag } from './shared/pidText.js';
 import { createPidView, FREE_ID } from './pidview.js';
 import { PDF_OPTIONS } from './pdfopts.js';
+import { UNITS, DEFAULT_UNIT, unitLabel, slotLabel as slotLabelOf } from './units.js';
 import {
   readMassBalanceFile, MassBalanceError, applyMassBalance, stripMassBalance, massBalanceSource, drawingMassBalance,
   valueOptions, defaultValueKey, lineValue, formatValue, toNumber, matchMethodLabel, lithiumGpl, streamKey, formatGpl, LI_KEY,
@@ -13,7 +14,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', 
 // 보기 전용 단일 HTML: 파일 안의 워커 코드로 띄운 워커가 준비되면 그것을 쓴다 (set-pdf-worker.js). 그 외에는 바로 준비됨
 const pdfWorkerReady = Promise.resolve(globalThis.pidPdfWorker).then((w) => { if (w) pdfjsLib.GlobalWorkerOptions.workerPort = w; });
 
-const DEFAULT_UNIT = 'BL3U';
 const DEFAULT_SLOT = `${DEFAULT_UNIT}-PFD`; // 처음 화면이자, 단위 구분 전에 올린 자료가 속하는 묶음
 
 // 실행 환경: 로컬 서버(Node, API 키 사용) 또는 claude.ai 아티팩트(사용자 계정의 Claude 사용)
@@ -59,7 +59,15 @@ const state = {
 // 지금 화면에 없는 묶음은 slots에 보관했다가 다시 고르면 그대로 꺼낸다.
 const slots = new Map();
 const slotKey = (unit = state.unit, doc = state.doc) => `${unit}-${doc.toUpperCase()}`;
-const slotLabel = (key = slotKey()) => key.replace('-PFD', ' · PFD').replace('-PID', ' · P&ID');
+const slotLabel = (key = slotKey()) => slotLabelOf(key);
+/** 드롭박스(Option 1 / Option 2, units.js)를 채운다. 보기 전용 HTML은 목록에 없는 묶음(예: BL2U)이 있으면 덧붙인다 */
+function fillUnits(extra = []) {
+  const opts = [...UNITS, ...extra.filter((u) => !UNITS.some((x) => x.value === u)).map((u) => ({ value: u, label: u }))];
+  const html = opts.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+  $('#unitSelect').innerHTML = html;
+  $('#slotUnit').innerHTML = html;
+  $('#unitSelect').value = state.unit;
+}
 
 function loadFlowMode() {
   try { return localStorage.getItem('pid.flowMode') === 'auto' ? 'auto' : 'basic'; } catch { return 'basic'; }
@@ -67,6 +75,7 @@ function loadFlowMode() {
 
 // ------------------------------------------------------------------ 초기화
 async function init() {
+  fillUnits();
   bindUpload();
   bindLists();
   bindViewer();
@@ -120,6 +129,8 @@ async function init() {
 /** 보기 전용 HTML: 들어 있는 결과와 도면을 바로 표시 */
 function initStatic(notice) {
   ['#btnPick', '#btnAnalyze', '#btnDemo', '#tierSelect', '#fileHint', '#fileChips', '#emptyHow', '#emptyDemo'].forEach((s) => { $(s).hidden = true; });
+  // 보기 전용 파일은 화면 위쪽을 줄인다: 안내 문구, 물질수지 표시 줄, 요약 문단을 숨기고 숫자 칩만 남긴다 (사용자 요청)
+  document.body.classList.add('static-view');
   const data = JSON.parse(STATIC_DATA.textContent);
   const toBuffer = (b64) => {
     if (Uint8Array.fromBase64) return Uint8Array.fromBase64(b64.trim()).buffer; // 지원 브라우저는 내장 디코더(훨씬 빠름)
@@ -128,9 +139,10 @@ function initStatic(notice) {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return bytes.buffer;
   };
-  // 묶음 키(예: BL2U-PFD) → [단위, 종류]. 모르는 키면 기본 BL3U · PFD
+  // 묶음 키(예: BL3U_OP2-PFD) → [구분, 종류]. 드롭박스에 없는 구분(예: BL2U)은 덧붙인다
+  fillUnits((data.bundles || [data]).map((b) => /^([A-Z0-9_]+)-(PFD|PID)$/i.exec(b.slot || '')?.[1]?.toUpperCase()).filter(Boolean));
   const parse = (key) => {
-    const m = /^([A-Z0-9]+)-(PFD|PID)$/i.exec(key || '');
+    const m = /^([A-Z0-9_]+)-(PFD|PID)$/i.exec(key || '');
     return m && [...$('#unitSelect').options].some((o) => o.value === m[1].toUpperCase()) ? [m[1].toUpperCase(), m[2].toLowerCase()] : null;
   };
   // 한 파일에 여러 묶음(--multi)이 있으면 공정 단위·PFD / P&ID 선택으로 바꿔 본다.
@@ -155,7 +167,7 @@ function initStatic(notice) {
   }
   for (const b of bundles) {
     const [unit, doc] = parse(b.slot) || [DEFAULT_UNIT, 'pfd'];
-    labels.push(`${unit} · ${doc === 'pid' ? 'P&ID' : 'PFD'} ${b.result.files.length}장`);
+    labels.push(`${slotLabel(slotKey(unit, doc))} ${b.result.files.length}장`);
   }
   runtime.staticLabels = labels;
   const first = bundles[0];
@@ -186,7 +198,6 @@ function bindUpload() {
   $('#btnDemo').addEventListener('click', loadDemo);
   const mbInput = $('#mbInput');
   $('#btnMb').addEventListener('click', () => askSlot('mb'));
-  $('#slotUnit').innerHTML = $('#unitSelect').innerHTML;
   $('#slotForm').addEventListener('submit', (e) => { e.preventDefault(); confirmSlot(); });
   $('#slotCancel').addEventListener('click', closeSlot);
   $('#slotModal').addEventListener('click', (e) => { if (e.target.id === 'slotModal') closeSlot(); });
@@ -243,7 +254,7 @@ function askSlot(kind, files = null) {
   slotPick = { kind, files };
   const label = kind === 'mb' ? '물질수지 입력' : $('#btnPick').textContent;
   $('#slotTitle').textContent = label;
-  $('#slotSub').textContent = kind === 'mb' ? '어느 공정 단위 · 도면 종류의 물질수지인지 고르세요.' : '어느 공정 단위의 어떤 도면인지 고르세요.';
+  $('#slotSub').textContent = kind === 'mb' ? '어느 Option · 도면 종류의 물질수지인지 고르세요.' : '어느 Option의 어떤 도면인지 고르세요.';
   $('#slotUnit').value = state.unit;
   document.querySelector(`input[name="slotDoc"][value="${state.doc}"]`).checked = true;
   $('#slotFiles').hidden = !files;
@@ -264,7 +275,7 @@ function confirmSlot() {
   const unit = $('#slotUnit').value;
   const doc = document.querySelector('input[name="slotDoc"]:checked')?.value || state.doc;
   if ($('#unitSelect').disabled && slotKey(unit, doc) !== slotKey()) {
-    toast('분석 중에는 다른 공정 단위 · 도면 종류로 바꿀 수 없습니다. 분석이 끝난 뒤 다시 시도해 주세요.', true);
+    toast('분석 중에는 다른 Option · 도면 종류로 바꿀 수 없습니다. 분석이 끝난 뒤 다시 시도해 주세요.', true);
     return;
   }
   closeSlot();
@@ -801,7 +812,7 @@ function markSlot() {
   // 검색은 공정 단위 전체(PFD·P&ID)라 단위가 바뀔 때만 비운다
   if (search.unit !== state.unit) closeSearch(true);
   search.unit = state.unit;
-  $('#flowSearch').placeholder = `${state.unit} Stream·설비 검색 (PFD·P&ID)`;
+  $('#flowSearch').placeholder = 'Stream·설비 검색 (PFD·P&ID)';
   document.querySelectorAll('#docPick [data-doc]').forEach((b) => {
     b.classList.toggle('active', b.dataset.doc === state.doc);
     b.setAttribute('aria-pressed', String(b.dataset.doc === state.doc));
@@ -1227,10 +1238,10 @@ function renderSearch() {
   const mbHint = state.result?.mass_balance && /[,;]/.test(q) ? '<li class="empty">Enter: 쉼표로 넣은 Stream을 물질수지 표로 비교</li>' : '';
   const scope = unitResults().map((x) => (x.doc === 'pid' ? 'P&ID' : 'PFD')).join('·');
   list.innerHTML = !scope
-    ? `<li class="empty">${esc(state.unit)} 자료가 아직 없습니다.</li>`
+    ? `<li class="empty">${esc(unitLabel(state.unit))} 자료가 아직 없습니다.</li>`
     : (search.items.length
       ? search.items.map((it, i) => `<li role="option" data-i="${i}" class="${i === search.active ? 'active' : ''}"><span class="kind"><b class="doc ${it.doc === 'PFD' ? 'pfd' : 'pid'}">${esc(it.doc)}</b> ${esc(it.kind)}</span><span class="lbl">${hl(it.label)}</span><span class="sub">${hl(it.sub)}</span></li>`).join('')
-      : `<li class="empty">${esc(state.unit)} ${esc(scope)}에서 찾지 못했습니다.</li>`) + mbHint;
+      : `<li class="empty">${esc(unitLabel(state.unit))} ${esc(scope)}에서 찾지 못했습니다.</li>`) + mbHint;
   list.hidden = false;
   input.setAttribute('aria-expanded', 'true');
 }
@@ -1267,7 +1278,7 @@ function revealPick(sel) {
 
 function bindSearch() {
   const input = $('#flowSearch'), list = $('#flowSearchList');
-  input.placeholder = `${state.unit} Stream·설비 검색 (PFD·P&ID)`;
+  input.placeholder = 'Stream·설비 검색 (PFD·P&ID)';
   let t = null;
   input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(renderSearch, 120); });
   input.addEventListener('focus', () => { if (input.value.trim()) renderSearch(); });

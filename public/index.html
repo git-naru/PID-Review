@@ -75,9 +75,7 @@
       <div class="card-head">
         <div class="flow-title">
           <h2>공정 Flow</h2>
-          <select id="unitSelect" title="공정 단위">
-            <option>BL1U</option><option>BL1D</option><option>BL2U</option><option>BL2D</option><option>HL1U</option><option>HL1D</option><option selected>BL3U</option>
-          </select>
+          <select id="unitSelect" title="BL3U Option"></select>
           <div class="doc-pick" id="docPick" role="group" aria-label="도면 종류">
             <button type="button" data-doc="pfd" title="PFD 보기">PFD</button><span aria-hidden="true">/</span><button type="button" data-doc="pid" title="P&amp;ID 보기">P&amp;ID</button>
           </div>
@@ -215,9 +213,9 @@
   <div class="modal" id="slotModal" hidden>
     <form class="modal-box slot-box" id="slotForm" role="dialog" aria-modal="true" aria-labelledby="slotTitle">
       <h3 id="slotTitle">도면 올리기</h3>
-      <p class="muted" id="slotSub">어느 공정 단위의 어떤 도면인지 고르세요.</p>
+      <p class="muted" id="slotSub">어느 Option의 어떤 도면인지 고르세요.</p>
       <div class="slot-form">
-        <label class="slot-unit">공정 단위 <select id="slotUnit"></select></label>
+        <label class="slot-unit">BL3U <select id="slotUnit"></select></label>
         <div class="slot-doc" role="radiogroup" aria-label="도면 종류">
           <label><input type="radio" name="slotDoc" value="pfd" /> PFD</label>
           <label><input type="radio" name="slotDoc" value="pid" /> P&amp;ID</label>

@@ -158,6 +158,9 @@ button { font: inherit; }
 /* 공정 단위 · 도면 종류 (PFD / P&ID): 고른 쪽만 색으로 */
 .flow-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .flow-title select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; }
+/* 보기 전용 HTML: 위쪽 안내·물질수지 줄·요약 문단 숨김 (숫자 칩은 남김) */
+.static-view #apiNotice, .static-view #fileBar, .static-view #summaryText { display: none !important; }
+.static-view #summary { padding-top: 10px; padding-bottom: 10px; }
 .doc-pick { display: inline-flex; align-items: center; gap: 2px; font-size: 13.5px; font-weight: 700; color: var(--muted); }
 .doc-pick span { opacity: .6; padding: 0 2px; }
 .doc-pick button { border: 0; background: none; color: var(--muted); font: inherit; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
