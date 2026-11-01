@@ -451,12 +451,12 @@ export function applyMassBalance(result, mb) {
       if (Math.abs(a - b) > tol) diffs.push(`${p.name}: 도면 ${sp.value}, 물질수지 ${formatValue(s.values[p.key])}${p.unit ? ` ${p.unit}` : ''}`);
     }
     if (diffs.length) {
-      found.push({
-        severity: 'medium', category: 'inconsistent',
-        title: `도면과 물질수지 값 불일치 (${lineName(l)})`,
-        description: `${lineName(l)}의 도면 표기값이 물질수지 스트림 ${s.id}와 다릅니다. ${diffs.join(' / ')}. 어느 쪽이 최신인지 확인하세요.`,
-        related_ids: [l.id],
-      });
+      // 같은 Stream이 보내는 도면·받는 도면에 함께 그려져 값도 같으면 검토 항목 하나로 (대상 라인만 늘림)
+      const title = `도면과 물질수지 값 불일치 (${lineName(l)})`;
+      const description = `${lineName(l)}의 도면 표기값이 물질수지 스트림 ${s.id}와 다릅니다. ${diffs.join(' / ')}. 어느 쪽이 최신인지 확인하세요.`;
+      const same = found.find((x) => x.title === title && x.description === description);
+      if (same) same.related_ids.push(l.id);
+      else found.push({ severity: 'medium', category: 'inconsistent', title, description, related_ids: [l.id] });
     }
   }
   const usedStreams = new Set(matches.map((m) => m.stream_id));

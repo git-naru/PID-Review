@@ -131,7 +131,11 @@
   - 이 세트는 **도면 안 글자가 외곽선**이라 텍스트 레이어에 태그·라인 번호가 없다(표제란만 텍스트). 판독 때 bbox를 생략시켜 위치가 비었고, OCR(`scripts/session/ocr-*.py`)로 채웠다. 이제 `hasTagText()`로 판단해 이런 시트는 모델이 bbox를 낸다.
   - Filtering Earth 제조·분배 2장(Rev. N)은 CANCELED, 벤더 패키지 안 라인과 일부 압축공기 시트는 라인 번호 없음
   - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
-- **사용자에게 보낸 결과 HTML (최신)**: `BL3U_PFD Review.html`(BL3U Option 1 · PFD, 물질수지 포함). 파일 이름은 사용자 지정, 탭 제목은 파일 이름. 보기 전용 파일은 위쪽 안내·물질수지 줄·요약 문단을 숨기고 숫자 칩만 남긴다(`body.static-view`).
+- **BL3U Option 2 · PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00011~00018` Rev. B, job4)
+  - 결과: 설비 112, 스트림/라인 198, 검토 항목 77건(높음 0). 물질수지 `319020-00626-0000-PR-CAL-00002_B.xlsx`(Stream 2101~2950) 54개 중 51개 매칭(2315~2317은 Pond 합계라 도면에 없음), 값 불일치 5건(2214, 2435, 2517, 2631, 2636).
+  - db `jobs/BL3U_OP2-PFD`: `status: done`, 결과 asset `06c83096025d94d7fb481918b9ecebde`. 물질수지 db `massbalance/BL3U_OP2-PFD`(asset `2d5a2eef…`).
+  - Option 2는 세척·리칭 대신 Bicarbonation(00014)으로 배터리급 Li2CO3를 만든다.
+- **사용자에게 보낸 결과 HTML (최신)**: `BL3U_PFD Review.html`(BL3U Option 1 · PFD + Option 2 · PFD, 각각 물질수지 포함, 약 13MB). 만들기: `build-standalone.mjs --multi "BL3U_PFD Review.html" BL3U-PFD <Option1 result-mb.json> <PDF> BL3U_OP2-PFD <Option2 result-mb.json> <PDF>`. 파일 이름은 사용자 지정, 탭 제목은 파일 이름. 보기 전용 파일은 위쪽 안내·물질수지 줄·요약 문단을 숨기고 숫자 칩만 남긴다(`body.static-view`).
 - 그 전: `BL3U_분석결과.html`(BL3U · PFD, 약 9MB, 첫 도면 약 2.7초), `BL2U_분석결과.html`(BL2U · PFD + P&ID, 약 220MB). 사용자 요청으로 단위별로 나눴다(채팅 분석 페이지는 그대로). 다른 단위를 고르면 "이 파일에 없습니다(이 파일에 든 자료: …)"로 안내.
 - 이전에 보낸 통합 HTML: `PID_Review_BL3U_BL2U_분석결과.html`(BL3U · PFD 물질수지 포함, BL2U · PFD, BL2U · P&ID를 한 파일에, 약 224MB). 이전에 묶음별 파일(`POSCO_CP3_PFD_분석결과.html`, `BL2U_PFD_분석결과.html`, `BL2U_PID_분석결과.html`)도 보냈다.
 - **이번 세션의 작업 파일은 새 세션에 없다**(scratchpad). 결과 HTML을 다시 만드는 방법은 4장 끝에 있다.
