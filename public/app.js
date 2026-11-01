@@ -11,8 +11,12 @@ import {
 } from './shared/massbalance.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdf.worker.min.mjs', import.meta.url).href;
-// 보기 전용 단일 HTML: 파일 안의 워커 코드로 띄운 워커가 준비되면 그것을 쓴다 (set-pdf-worker.js). 그 외에는 바로 준비됨
-const pdfWorkerReady = Promise.resolve(globalThis.pidPdfWorker).then((w) => { if (w) pdfjsLib.GlobalWorkerOptions.workerPort = w; });
+// 보기 전용 단일 HTML: 파일 안의 워커 코드로 띄운 워커가 준비되면 그것을 모든 도면이 같이 쓴다 (set-pdf-worker.js).
+// pdf.js에 workerPort로 넘기면 도면 하나를 닫을 때 같이 쓰는 워커까지 닫아 버려, 그 사이 여는 도면이
+// "PDFWorker.create - the worker is being destroyed"로 실패한다. 그래서 PDFWorker를 직접 만들어 각 도면에 넘긴다
+// (직접 넘긴 워커는 도면을 닫아도 닫히지 않는다). 그 외 페이지는 도면마다 워커를 따로 띄운다(sharedPdfWorker 없음).
+let sharedPdfWorker = null;
+const pdfWorkerReady = Promise.resolve(globalThis.pidPdfWorker).then((w) => { if (w) sharedPdfWorker = new pdfjsLib.PDFWorker({ port: w }); });
 
 const DEFAULT_SLOT = `${DEFAULT_UNIT}-PFD`; // 처음 화면이자, 단위 구분 전에 올린 자료가 속하는 묶음
 
@@ -2019,7 +2023,7 @@ function getPdf(fileIndex) {
     const task = { inner: null, closed: false, destroy() { task.closed = true; return task.inner?.destroy(); } };
     task.promise = Promise.all([pdfWorkerReady, typeof src === 'function' ? src() : src]).then(([, data]) => {
       if (task.closed) throw new Error('도면 보기가 닫혔습니다.');
-      task.inner = pdfjsLib.getDocument({ data: data.slice(0), ...PDF_OPTIONS });
+      task.inner = pdfjsLib.getDocument({ data: data.slice(0), ...PDF_OPTIONS, ...(sharedPdfWorker ? { worker: sharedPdfWorker } : {}) });
       return task.inner.promise;
     });
     // 받기에 실패하면 다음에 다시 시도할 수 있게 비운다
