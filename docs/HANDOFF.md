@@ -112,7 +112,7 @@
 - **POSCO CP3 PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00001~00008`)
   - 결과: 설비 125, 스트림 196, 검토 항목 82건(물질수지 2건 포함)
   - 채팅 분석 페이지에 저장된 데이터
-    - db `jobs/current`(BL3U · PFD 묶음): `status: done`, 결과 asset `beb65a8b7b692540ded29fb87b314cd2`("연못"→"Pond" 수정본, 이전 `6deebc1e…`)
+    - db `jobs/current`(BL3U · PFD 묶음): `status: done`, 결과 asset `870a020cb22dc27ff7d89be93c3c68bd`(배터리급 요약 수정본, 이전 `beb65a8b…`)
     - 원본 PDF 8개는 페이지 assets에 있다(asset id는 결과 JSON의 `files[].assetId`).
 - **실제 물질수지 반영**: `319020-00626-0000-PR-CAL-00001_B.xlsx`
   - 46개 스트림 모두 매칭됐다.
@@ -133,8 +133,8 @@
   - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
 - **BL3U Option 2 · PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00011~00018` Rev. B, job4)
   - 결과: 설비 112, 스트림/라인 198, 검토 항목 77건(높음 0). 물질수지 `319020-00626-0000-PR-CAL-00002_B.xlsx`(Stream 2101~2950) 54개 중 51개 매칭(2315~2317은 Pond 합계라 도면에 없음), 값 불일치 5건(2214, 2435, 2517, 2631, 2636).
-  - db `jobs/BL3U_OP2-PFD`: `status: done`, 결과 asset `06c83096025d94d7fb481918b9ecebde`. 물질수지 db `massbalance/BL3U_OP2-PFD`(asset `2d5a2eef…`).
-  - Option 2는 세척·리칭 대신 Bicarbonation(00014)으로 배터리급 Li2CO3를 만든다.
+  - db `jobs/BL3U_OP2-PFD`: `status: done`, 결과 asset `100e08243e0316dca69fc09fd6580599`(요약 수정본, 이전 `06c83096…`). 물질수지 db `massbalance/BL3U_OP2-PFD`(asset `2d5a2eef…`).
+  - **Option 1·2 모두 배터리급 탄산리튬 공정**이다(사용자 확인). 물질수지 기준은 기술등급 25,000 t/y이고 배터리급은 그 기술등급에서 정제(도면 Note 1). 정제 방식만 다르다: Option 1은 1·2차 세척·리칭(00004), Option 2는 Bicarbonation·IX·Decarbonation(00014). 요약 문구를 이렇게 고쳐 결과 asset을 다시 올렸다(Option 1 `870a020c…`, Option 2 `100e0824…`).
 - **사용자에게 보낸 결과 HTML (최신)**: `BL3U_PFD Review.html`(BL3U Option 1 · PFD + Option 2 · PFD, 각각 물질수지 포함, 약 13MB). 만들기: `build-standalone.mjs --multi "BL3U_PFD Review.html" BL3U-PFD <Option1 result-mb.json> <PDF> BL3U_OP2-PFD <Option2 result-mb.json> <PDF>`. 파일 이름은 사용자 지정, 탭 제목은 파일 이름. 보기 전용 파일은 위쪽 안내·물질수지 줄·요약 문단을 숨기고 숫자 칩만 남긴다(`body.static-view`).
 - 그 전: `BL3U_분석결과.html`(BL3U · PFD, 약 9MB, 첫 도면 약 2.7초), `BL2U_분석결과.html`(BL2U · PFD + P&ID, 약 220MB). 사용자 요청으로 단위별로 나눴다(채팅 분석 페이지는 그대로). 다른 단위를 고르면 "이 파일에 없습니다(이 파일에 든 자료: …)"로 안내.
 - 이전에 보낸 통합 HTML: `PID_Review_BL3U_BL2U_분석결과.html`(BL3U · PFD 물질수지 포함, BL2U · PFD, BL2U · P&ID를 한 파일에, 약 224MB). 이전에 묶음별 파일(`POSCO_CP3_PFD_분석결과.html`, `BL2U_PFD_분석결과.html`, `BL2U_PID_분석결과.html`)도 보냈다.
