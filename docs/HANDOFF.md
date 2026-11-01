@@ -133,7 +133,14 @@
   - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
 - **BL3U Option 2 · PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00011~00018` Rev. B, job4)
   - 결과: 설비 112, 스트림/라인 198, 검토 항목 77건(높음 0). 물질수지 `319020-00626-0000-PR-CAL-00002_B.xlsx`(Stream 2101~2950) 54개 중 51개 매칭(2315~2317은 Pond 합계라 도면에 없음), 값 불일치 5건(2214, 2435, 2517, 2631, 2636).
-  - db `jobs/BL3U_OP2-PFD`: `status: done`, 결과 asset `100e08243e0316dca69fc09fd6580599`(요약 수정본, 이전 `06c83096…`). 물질수지 db `massbalance/BL3U_OP2-PFD`(asset `2d5a2eef…`).
+  - db `jobs/BL3U_OP2-PFD`: `status: done`, 결과 asset `5de236e0e28fae4439be5fd00c179b72`(질의 반영본, 이전 `100e0824…`, `06c83096…`). 물질수지 db `massbalance/BL3U_OP2-PFD`(asset `2d5a2eef…`).
+  - **사용자 확인 질의 6건 반영**(검토 항목 77 → 69, 원 판독 out/*.json을 고쳐 다시 병합):
+    - Q1 PFD-00012 Ca-Mg REMOVAL REACTOR 수량: 2기 (NOTE 4). 검토 항목 해소.
+    - Q2 PFD-00016 모액 회수부 물질수지 차이 약 8.6 t/h: 사용자 미확인 → 검토 항목 유지.
+    - Q3 PFD-00013 Stream 2511: 도면대로 PFD-00014가 맞음(거쳐서 2535로 PFD-00017). 검토 항목 해소.
+    - Q4 도면 표 vs 물질수지 불일치(2214, 2435, 2517, 2631, 2636): 물질수지 파일 기준. 도면 라인 값을 파일 값으로 정정하고 원래 값은 라인 note에 남김.
+    - Q5 태그 없는 펌프: 수량 미정으로 유지(기호만 기록), 검토 항목 유지.
+    - Q6 PFD-00014 Stream 2531/2536/2537 물성 차이: 물질수지 표 오기, 투자비 영향 없음. 검토 항목 해소.
   - **Option 1·2 모두 배터리급 탄산리튬 공정**이다(사용자 확인). 물질수지 기준은 기술등급 25,000 t/y이고 배터리급은 그 기술등급에서 정제(도면 Note 1). 정제 방식만 다르다: Option 1은 1·2차 세척·리칭(00004), Option 2는 Bicarbonation·IX·Decarbonation(00014). 요약 문구를 이렇게 고쳐 결과 asset을 다시 올렸다(Option 1 `870a020c…`, Option 2 `100e0824…`).
 - **사용자에게 보낸 결과 HTML (최신)**: `BL3U_PFD Review.html`(BL3U Option 1 · PFD + Option 2 · PFD, 각각 물질수지 포함, 약 13MB). 만들기: `build-standalone.mjs --multi "BL3U_PFD Review.html" BL3U-PFD <Option1 result-mb.json> <PDF> BL3U_OP2-PFD <Option2 result-mb.json> <PDF>`. 파일 이름은 사용자 지정, 탭 제목은 파일 이름. 보기 전용 파일은 위쪽 안내·물질수지 줄·요약 문단을 숨기고 숫자 칩만 남긴다(`body.static-view`).
 - 그 전: `BL3U_분석결과.html`(BL3U · PFD, 약 9MB, 첫 도면 약 2.7초), `BL2U_분석결과.html`(BL2U · PFD + P&ID, 약 220MB). 사용자 요청으로 단위별로 나눴다(채팅 분석 페이지는 그대로). 다른 단위를 고르면 "이 파일에 없습니다(이 파일에 든 자료: …)"로 안내.
