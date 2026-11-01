@@ -594,20 +594,24 @@ export function lithiumGpl(stream, properties) {
   const nameOf = (p) => p.key.split('|')[0];
   const unitOf = (p) => p.key.split('|')[1];
   const has = (p) => stream.values[p.key] !== undefined && Number.isFinite(num(p));
-  const li = properties.find((p) => /^(li\+?1?|lithium|li\(aq\))$/.test(nameOf(p)) && !/solid/i.test(p.group) && has(p));
+  // Li+ 항목: 액상 조성(LIQUID CHEMICAL COMPOSITION) 것을 먼저, 값이 0인 칸은 건너뜀 (예: 모두 0인 "Li+ (ppm)" 열)
+  const lis = properties.filter((p) => /^(li\+?1?|lithium|li\(aq\))$/.test(nameOf(p)) && !/solid/i.test(p.group) && has(p) && num(p) > 0);
+  const li = lis.find((p) => /liquid/i.test(p.group)) || lis[0];
   if (!li) return null;
   const liUnit = unitOf(li);
   const liVal = num(li);
   if (/^(g\/l|kg\/m3)$/.test(liUnit)) return { gpl: liVal, basis: 'given', liPct: null, liUnit: li.unit };
   if (/^mg\/l$/.test(liUnit)) return { gpl: liVal / 1000, basis: 'given', liPct: null, liUnit: li.unit };
   const liPct = /^(ppm\w*|mg\/kg)$/.test(liUnit) ? liVal / 1e4 : /%|wt/.test(liUnit) || !liUnit ? liVal : NaN;
-  const dens = properties.find((p) => nameOf(p) === 'density' && has(p));
+  const solidsP = properties.find((p) => nameOf(p) === '%solids' && has(p));
+  const solidsPct = solidsP ? num(solidsP) : 0;
+  // 밀도: "Density" 한 칸이면 그것. 밀도가 Liquid / Solid / Pulp로 나뉜 표는 슬러리면 Pulp(스트림), 액체면 Liquid
+  const densOf = (name) => properties.find((p) => nameOf(p) === name && has(p) && num(p) > 0);
+  const dens = densOf('density') || (solidsPct > 0 && densOf('pulpdensity')) || densOf('liquiddensity');
   if (!Number.isFinite(liPct) || !dens) return null;
   const du = unitOf(dens);
   const kgPerL = /^kg\/m3$/.test(du) ? num(dens) / 1000 : /^(t\/m3|g\/cm3|kg\/l|g\/ml|sg|)$/.test(du) ? num(dens) : NaN;
   if (!Number.isFinite(kgPerL) || kgPerL <= 0) return null;
-  const solidsP = properties.find((p) => nameOf(p) === '%solids' && has(p));
-  const solidsPct = solidsP ? num(solidsP) : 0;
   const liquidFrac = Math.max(0, 1 - solidsPct / 100);
   const gpl = liPct * (solidsPct > 0 ? liquidFrac : 1) * kgPerL * 10;
   // 고상 리튬 화합물 (% w/w of solids)

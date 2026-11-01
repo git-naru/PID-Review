@@ -156,6 +156,24 @@ test('Li 농도(g/L): 액상은 Li+ × 밀도, 슬러리는 액상 분율 반영
   assert.ok(Math.abs(lithiumGpl(kgm3.streams[0], kgm3.properties).gpl - 5.25) < 1e-9);
 });
 
+test('Li 농도(g/L): 밀도가 Liquid/Pulp로 나뉜 표, 0만 있는 Li+ (ppm) 열은 건너뛴다 (BL3U Option 2 형식)', () => {
+  const mb = parseMassBalance(grid([
+    ['Stream', '', '2101', '2530'],
+    ['Liquid Density', 't/m3', '1.208', '0.9814'],
+    ['Solid Density', 't/m3', '0', '2.11'],
+    ['Pulp Density', 't/m3', '0', '1.8547'],
+    ['% Solids', '%', '0', '88.0319'],
+    ['Li+', 'ppm', '0', '0'],
+    ['LIQUID CHEMICAL COMPOSITION', '', '', ''],
+    ['Li+', '% w/w', '0.0641', '0.1659'],
+  ]));
+  const [brine, cake] = mb.streams.map((s) => lithiumGpl(s, mb.properties));
+  assert.equal(brine.basis, 'liquid');
+  assert.ok(Math.abs(brine.gpl - 0.0641 * 1.208 * 10) < 1e-9, `액상: Li+ × Liquid Density (${brine.gpl})`);
+  assert.equal(cake.basis, 'stream');
+  assert.ok(Math.abs(cake.gpl - 0.1659 * (1 - 0.880319) * 1.8547 * 10) < 1e-9, `슬러리: Pulp Density (${cake.gpl})`);
+});
+
 test('도면 안 스트림 표: 라인 specs를 물질수지로 모아 Li 농도를 내고, 검토 항목은 만들지 않는다', () => {
   const line = (no, specs) => ({ id: `S-${no}`, line_no: no, kind: 'process', stream_no: '', specs, issue_ids: [], from_id: '', to_id: '' });
   const result = {
