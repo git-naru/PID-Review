@@ -594,11 +594,13 @@ function applyResult(result, sources, slot = null) {
     const exists = prevSel.type === 'node' ? result.nodes.some((n) => n.id === prevSel.id)
       : prevSel.type === 'line' ? result.lines.some((l) => l.id === prevSel.id)
         : prevSel.type === 'issue' ? result.issues.some((i) => i.id === prevSel.id)
-          : prevSel.type === 'stream' ? (mbx?.streams || []).some((x) => x.id === prevSel.id) : true;
+          : prevSel.type === 'stream' ? (mbx?.streams || []).some((x) => x.id === prevSel.id)
+            : prevSel.type === 'symbol' ? (result.symbols || []).some((x) => x.id === prevSel.id) : true;
     if (exists) state.selected = prevSel;
   }
 
   $('#statusBar').hidden = false;
+  $('#optSymLabel').hidden = state.flowMode !== 'basic' || !result.symbols?.length;
   $('#summary').hidden = false;
   $('#summaryText').textContent = result.summary || '';
   const s = result.stats;
@@ -611,6 +613,7 @@ function applyResult(result, sources, slot = null) {
       : result.legend?.found ? `<span class="stat">범례 적용<b>✓</b></span>` : '<span class="stat medium">범례 미입력</span>')
     + (mbx?.source === 'drawing' ? `<span class="stat" title="도면 안 스트림 표에서 읽은 스트림 수 (물질수지로 사용)">도면 스트림 표<b>${mbx.stats.streams}</b></span>`
       : mbx ? `<span class="stat" title="물질수지 스트림 중 도면과 매칭된 수">물질수지 매칭<b>${mbx.stats.matched_streams}/${mbx.stats.streams}</b></span>` : '')
+    + (result.symbols?.length ? `<span class="stat" title="범례 시트에서 배운 기호 모양으로 도면에서 찾은 계기·밸브·배관 부속·설비 기호 수 (도면에서 클릭)">도면 기호<b>${result.symbols.length}</b></span>` : '')
     + (result.meta?.demo ? '<span class="stat">데모 결과</span>' : '')
     + (result.meta?.progress && result.meta.progress.done < result.meta.progress.total
       ? `<span class="stat medium">판독<b>${result.meta.progress.done}/${result.meta.progress.total}</b></span>` : '');
@@ -704,6 +707,7 @@ function bindFlowToolbar() {
   bindFullscreen();
   $('#optNav').addEventListener('change', () => pv.refresh());
   $('#optMain').addEventListener('change', showMainStream);
+  $('#optSym').addEventListener('change', () => $('#pidView').classList.toggle('show-sym', $('#optSym').checked));
   $('#flowValue').addEventListener('change', () => {
     state.flowKey = currentValueKey();
     updateFlowValues();
@@ -916,9 +920,10 @@ function markFlowMode() {
   $('#legendBasic').hidden = !basic;
   $('#optNavLabel').hidden = !basic; // 연결목록 버튼은 기본 보기에서만
   $('#optMainLabel').hidden = !basic;
+  $('#optSymLabel').hidden = !basic || !state.result?.symbols?.length; // 도면 기호가 있는 결과에서만
   showMainStream();
   $('#flowHint').textContent = basic
-    ? '원본 도면 위의 설비·Line No.나 선·화살표를 클릭하면 상세 정보가 표시되고, 선택한 라인의 경로가 붉게 표시됩니다. 더블클릭: 확대 보기, Off-page는 연결 도면으로 이동. 휠: 확대/축소, 드래그: 이동. 연결목록을 켜면 ◀ From / To ▶ 버튼으로 흐름을 따라갈 수 있습니다.'
+    ? '원본 도면 위의 설비·Line No.나 선·화살표, 계기·밸브 기호를 클릭하면 상세 정보가 표시되고, 선택한 라인의 경로가 붉게 표시됩니다. 더블클릭: 확대 보기, Off-page는 연결 도면으로 이동. 휠: 확대/축소, 드래그: 이동. 연결목록을 켜면 ◀ From / To ▶ 버튼으로 흐름을 따라갈 수 있습니다.'
     : '설비나 라인을 클릭하면 상세 정보가 표시됩니다.';
 }
 
@@ -1420,6 +1425,7 @@ function renderDetail() {
   else if (sel.type === 'legend') box.innerHTML = legendDetail(legendById(sel.id));
   else if (sel.type === 'stream') box.innerHTML = streamDetail(streamById(sel.id));
   else if (sel.type === 'free') box.innerHTML = freeDetail();
+  else if (sel.type === 'symbol') box.innerHTML = symbolDetail(symbolById(sel.id));
   else box.innerHTML = issueDetail(issueById(sel.id));
 
   box.querySelectorAll('[data-mb]').forEach((el) => el.addEventListener('click', () => lookupMassBalance(el.dataset.mb)));
@@ -1442,6 +1448,11 @@ function openItem(type, id) {
     else toast('이 스트림은 도면에서 찾지 못해 위치를 표시할 수 없습니다.', true);
     return;
   }
+  if (type === 'symbol') {
+    const sy = symbolById(id);
+    if (sy) openViewer({ loc: sy.loc, title: sy.label, sub: `도면 기호 · ${SYM_KIND[sy.kind] || ''}` });
+    return;
+  }
   const item = type === 'node' ? nodeById(id) : type === 'line' ? lineById(id) : type === 'legend' ? legendById(id) : issueById(id);
   if (item) openViewer(viewTarget(item, type));
 }
@@ -1452,7 +1463,47 @@ const goLine = (l) => `<button class="link" data-go="line:${esc(l.id)}">${esc(l.
 const streamLink = (id, text = `Stream ${id}`) => (state.result?.mass_balance
   ? `<button class="link mb-open" data-mb="${esc(id)}" title="Stream ${esc(id)} 물질수지 표 보기">${esc(text)}</button>`
   : esc(text));
-const locText = (loc) => (loc ? `${esc(drawingLabel(loc))} (${loc.source === 'text' ? '텍스트 위치 확인' : loc.source === 'model' ? 'AI 추정 위치' : '위치 정보 없음'})` : '-');
+const locText = (loc) => (loc ? `${esc(drawingLabel(loc))} (${loc.source === 'text' ? '텍스트 위치 확인' : loc.source === 'model' ? 'AI 추정 위치' : loc.source === 'symbol' ? '도면 기호 위치' : '위치 정보 없음'})` : '-');
+
+// ---- 도면 기호 (범례 시트에서 배운 모양으로 찾은 계기·밸브·배관 부속·설비)
+const SYM_KIND = { instrument: '계기', valve: '밸브', piping: '배관 부속', equipment: '설비' };
+const SYM_BADGE = { instrument: 'instrument', valve: 'valve', piping: 'line', equipment: 'equipment' };
+const symbolById = (id) => (state.result?.symbols || []).find((x) => x.id === id);
+/** 기호를 배운 범례 시트 */
+function symbolSource(sy) {
+  const lib = (state.result?.symbol_library || []).find((x) => x.id === sy.sym);
+  const d = lib && state.result.drawings.find((x) => x.file_index === lib.source.file_index);
+  return d ? `${d.drawing_no || ''} ${d.title || ''}`.trim() : '';
+}
+/** 설비·계기 상세에 붙는 '도면 기호' 줄 */
+function symbolRow(nodeId) {
+  const sy = (state.result?.symbols || []).find((x) => x.node_id === nodeId);
+  return sy ? `<tr><th>도면 기호</th><td>${esc(sy.label)} <span class="muted">(${SYM_KIND[sy.kind] || ''}, 범례에서 인식)</span></td></tr>` : '';
+}
+function symbolDetail(sy) {
+  if (!sy) return '<p class="muted">항목을 찾을 수 없습니다.</p>';
+  // 같은 도면에서 가까운 분석 결과 항목 (기호에 연결되지 않았을 때 참고)
+  const [cx, cy] = [(sy.loc.bbox[0] + sy.loc.bbox[2]) / 2, (sy.loc.bbox[1] + sy.loc.bbox[3]) / 2];
+  const cat = { instrument: ['instrument'], valve: ['valve'], piping: ['valve', 'other'], equipment: ['equipment'] }[sy.kind] || [];
+  const near = state.result.nodes
+    .filter((n) => cat.includes(n.category) && n.loc?.bbox && n.loc.file_index === sy.loc.file_index && n.loc.page === sy.loc.page)
+    .map((n) => [Math.hypot((n.loc.bbox[0] + n.loc.bbox[2]) / 2 - cx, (n.loc.bbox[1] + n.loc.bbox[3]) / 2 - cy), n])
+    .filter(([d]) => d < 0.08).sort((a, b) => a[0] - b[0]).slice(0, 4);
+  const src = symbolSource(sy);
+  return `
+    <span class="badge ${SYM_BADGE[sy.kind] || ''}">도면 기호 · ${SYM_KIND[sy.kind] || sy.kind}</span>
+    <h3>${esc(sy.label)}</h3>
+    <p class="sub">범례 시트에서 배운 기호 모양으로 도면에서 찾았습니다. 분석 결과(리스트)에는 연결된 항목이 없습니다.</p>
+    <table class="kv">
+      <tr><th>종류</th><td>${SYM_KIND[sy.kind] || sy.kind}</td></tr>
+      ${sy.text ? `<tr><th>기호 안 글자</th><td>${esc(sy.text)}</td></tr>` : ''}
+      ${src ? `<tr><th>범례</th><td>${esc(src)}</td></tr>` : ''}
+      <tr><th>도면</th><td>${esc(drawingLabel(sy.loc))}</td></tr>
+      <tr><th>모양 일치도</th><td>${Math.round((sy.score || 0) * 100)}%</td></tr>
+    </table>
+    ${near.length ? `<h4>가까운 분석 항목</h4><ul>${near.map(([, n]) => `<li>${goNode(n.id)} <span class="muted">${esc(n.equipment_type || n.name || '')}</span></li>`).join('')}</ul>` : ''}
+    <div class="actions-row"><button class="btn small primary" data-view>도면에서 위치 보기</button></div>`;
+}
 
 function issuesBlock(ids) {
   if (!ids?.length) return '';
@@ -1472,6 +1523,7 @@ function nodeDetail(n) {
       <tr><th>Service</th><td>${esc(n.service) || '-'}</td></tr>
       ${n.offpage_ref ? `<tr><th>참조</th><td>${esc(n.offpage_ref)}</td></tr>` : ''}
       <tr><th>도면</th><td>${locText(n.loc)}</td></tr>
+      ${symbolRow(n.id)}
       <tr><th>판독 신뢰도</th><td>${CONF_LABEL[n.confidence] || n.confidence}</td></tr>
       ${n.note ? `<tr><th>비고</th><td>${esc(n.note)}</td></tr>` : ''}
     </table>

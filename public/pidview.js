@@ -13,6 +13,8 @@ export const FREE_ID = '__free__'; // Stream 번호 없이 도면에서 직접 �
 const MIN_Z = 0.5, MAX_Z = 16;
 const BASE_CANVAS_PX = 4096; // 도면 전체 그림의 최대 크기 (확대한 부분은 보이는 영역만 따로 선명하게 그림)
 
+const SYM_KIND = { instrument: '계기', valve: '밸브', piping: '배관 부속', equipment: '설비' };
+
 export function createPidView(container, ui) {
   container.innerHTML = '<div class="pv-stage"><canvas class="pv-canvas"></canvas><canvas class="pv-detail" hidden></canvas><svg class="pv-main" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><svg class="pv-flow" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"></svg><div class="pv-marks"></div></div><div class="pv-msg" hidden></div>';
   const flowSvg = container.querySelector('.pv-flow');
@@ -441,7 +443,17 @@ export function createPidView(container, ui) {
       const on = (x) => x.loc?.bbox && `${x.loc.file_index}:${x.loc.page}` === v.key;
       // NOTES 문단 안에서 찾은 스트림 번호는 특이사항 글이므로 값을 붙이지 않는다
       const inNotes = (b) => (notes.get(v.key) || []).some((n) => (b[0] + b[2]) / 2 >= n[0] && (b[0] + b[2]) / 2 <= n[2] && (b[1] + b[3]) / 2 >= n[1] && (b[1] + b[3]) / 2 <= n[3]);
+      const nodeIds = new Set(r.nodes.map((n) => n.id));
       const box = (b, pad) => `left:${pct(b[0] - pad)};top:${pct(b[1] - pad)};width:${pct(b[2] - b[0] + pad * 2)};height:${pct(b[3] - b[1] + pad * 2)}`;
+      // 범례에서 배운 기호(계기·밸브·배관 부속·설비): 다른 표시보다 아래에 깔아 Line No.·설비 태그를 가리지 않는다.
+      // 분석 결과 항목에 연결된 기호는 그 항목으로 선택된다.
+      for (const sy of r.symbols || []) {
+        if (!on(sy)) continue;
+        const ref = sy.node_id && nodeIds.has(sy.node_id) ? { type: 'node', id: sy.node_id } : { type: 'symbol', id: sy.id };
+        const cls = ['pv-mark', 'sym', sy.kind, selected.has(ref.id) ? 'sel' : ''];
+        const tip = `${SYM_KIND[sy.kind] || ''} · ${sy.label}${sy.text ? ` (${sy.text})` : ''}`;
+        html.push(`<div class="${cls.join(' ')}" data-type="${ref.type}" data-id="${esc(ref.id)}" title="${esc(tip)}" style="${box(sy.loc.bbox, 0.0015)}"></div>`);
+      }
       for (const n of r.nodes) {
         if (!on(n)) continue;
         const ins = n.category === 'instrument' || n.category === 'valve';
@@ -664,7 +676,7 @@ export function createPidView(container, ui) {
 
   function highlight(ids, focus) {
     selected = new Set(ids);
-    const items = v.result ? [...v.result.nodes, ...v.result.lines].filter((x) => selected.has(x.id) && x.loc?.bbox) : [];
+    const items = v.result ? [...v.result.nodes, ...v.result.lines, ...(v.result.symbols || [])].filter((x) => selected.has(x.id) && x.loc?.bbox) : [];
     const here = items.filter((x) => `${x.loc.file_index}:${x.loc.page}` === v.key);
     if (focus && !here.length && items.length) {
       // 다른 도면에 있으면 그 도면으로 이동
@@ -693,7 +705,7 @@ export function createPidView(container, ui) {
     prefetch,
     /** 검색으로 고른 항목: 지금 도면에 있으면 그 위치로 부드럽게 옮긴다 (다른 도면이면 highlight가 넘어감) */
     reveal(ids) {
-      const it = v.result && [...v.result.nodes, ...v.result.lines].find((x) => ids.includes(x.id) && x.loc?.bbox && `${x.loc.file_index}:${x.loc.page}` === v.key);
+      const it = v.result && [...v.result.nodes, ...v.result.lines, ...(v.result.symbols || [])].find((x) => ids.includes(x.id) && x.loc?.bbox && `${x.loc.file_index}:${x.loc.page}` === v.key);
       if (it && v.page) centerOn(it.loc.bbox);
     },
     /** 확대·축소 버튼: 보이는 화면 가운데를 기준으로 */

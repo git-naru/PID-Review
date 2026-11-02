@@ -20,6 +20,12 @@ PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설�
       - 점선은 점선 그대로 붉게 칠해지고, 화살촉도 함께 칠해집니다.
       - 도면의 선이나 화살표를 직접 클릭해도 그 라인이 선택됩니다(선 위에서는 손가락 모양).
       - 스캔 도면, Line No.가 선에서 멀리 떨어진 경우에는 칠해지지 않거나 일부만 칠해질 수 있습니다.
+    - **도면 기호 클릭**: 범례 시트(P&ID 세트 앞쪽 1~3페이지)에서 계기·밸브·배관 부속·설비 기호의 모양을 배워, 도면에서 같은 모양을 찾아 클릭할 수 있게 합니다.
+      - 계기 버블(현장·DCS·PLC·컴퓨터 표시, 패널 전면/후면), 게이트·글로브·볼·체크·버터플라이·플러그·다이어프램·나이프·핀치 밸브(열림/닫힘), 공기·전동 구동 밸브, 구동기, 리듀서·스트레이너·플렉시블 호스, 펌프·송풍기·모터·VFD·집진기 등입니다.
+      - 기호를 클릭하면 분석 결과의 해당 항목(계기는 버블 안 태그, 밸브·설비는 가까운 태그와 형식으로 연결)이 선택됩니다. 연결된 항목이 없으면 기호 이름·종류·범례 출처·가까운 분석 항목을 보여 줍니다.
+      - 평소에는 도면을 가리지 않게 투명하고, 마우스를 올리면 종류별 색(계기 파랑, 밸브 보라, 배관 부속 초록, 설비 주황)으로 테두리가 보입니다. 도구 막대의 **기호**를 켜면 모든 기호 테두리를 표시합니다.
+      - 원리: PDF의 선·원·채움 도형을 1pt 간격 점으로 바꿔, 범례 기호(템플릿)를 회전 4방향 × 뒤집기 × 배율로 겹쳐 보고 양방향 점 일치율로 고릅니다(`shared/pidSymbols.js`). 모양이 겹치면 큰 기호에만 있는 부분이 실제로 그려져 있는지로 고릅니다(예: 글로브 = 게이트 + 가운데 원).
+      - 채팅 분석 세션에서 `scripts/session/learn-symbols.mjs`(범례 → 기호 사전)와 `detect-symbols.mjs`(도면에 적용)로 만들어 결과 JSON의 `symbols`에 넣습니다. 아래 "채팅 분석" 참고.
     - 도구 막대의 **연결목록**을 켜면, 설비나 Line No.를 고를 때 아래에 **◀ From / To ▶** 버튼이 생깁니다(기본은 꺼짐). 누르면 앞뒤 설비·라인으로 이동해 흐름을 따라갈 수 있습니다.
       - Off-page에서는 연결 도면의 짝으로 넘어갑니다.
       - 도면에 위치가 없는 번호 없는 분기선은 건너뛰고 반대편 설비로 갑니다.
@@ -118,6 +124,7 @@ PDF를 한 장 또는 여러 장 입력하면 Claude가 도면을 판독해 설�
    - `make-prompts.mjs`: 시트별 판독 지시문 생성
    - 시트별 판독(병렬)
    - `assemble.mjs`: 병합과 검증
+   - (P&ID) `ocr-legend.py` → `learn-symbols.mjs` → `detect-symbols.mjs`: 범례 시트에서 기호 모양을 배워 도면 기호를 찾아 클릭할 수 있게 함
 5. **세션에서**: 결과 JSON을 페이지 저장소에 올립니다. 페이지가 자동으로 결과를 표시합니다.
 
 데이터는 페이지의 저장 기능에 들어 있습니다.
@@ -192,6 +199,8 @@ public/   index.html · app.js(Flow·리스트·도면 뷰어) · engine.js(아�
 public/   chatmode.js(채팅 분석 모드: 업로드·요청·결과 표시) · pidview.js(Flow 기본 보기: 원본 도면 + 클릭 영역)
 scripts/  build-artifact.mjs(아티팩트 번들 생성 → dist/artifact, dist/artifact-chat) · build-standalone.mjs(보기 전용 단일 HTML)
 scripts/session/  prepare.mjs · render_pages.py · make-prompts.mjs · assemble.mjs · ocr-sheets.py · ocr-place.py (채팅 세션 분석, Python + pypdfium2 필요, OCR은 tesseract)
+scripts/session/  ocr-legend.py · learn-symbols.mjs · detect-symbols.mjs · legend-BL2U.json (범례 기호 학습·도면 기호 찾기, 설정은 세트별)
+shared/   pidSymbols.js(도면 기호: 기본 도형 추출·템플릿·찾기)
 shared/   merge.js(시트별 결과 병합) · massbalance.js(물질수지 읽기·매칭) · pdfGeom.js(도면 선 추출·경로 추적)
 samples/  샘플 범례 1장 + P&ID 2장(의도적 결함 포함) · demo-analysis.json · PID-100-MB.xlsx/.csv(샘플 물질수지)
 ```

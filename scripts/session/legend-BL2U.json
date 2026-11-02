@@ -1,0 +1,465 @@
+{
+ "sheets": {
+  "0": {
+   "sections": [
+    {
+     "bb": [
+      0.018,
+      0.565,
+      0.138,
+      0.875
+     ],
+     "kind": "valve",
+     "split_x": 0.0425,
+     "variants": [
+      "",
+      "closed"
+     ]
+    },
+    {
+     "bb": [
+      0.14,
+      0.065,
+      0.231,
+      0.72
+     ],
+     "kind": "piping"
+    },
+    {
+     "bb": [
+      0.232,
+      0.065,
+      0.66,
+      0.875
+     ],
+     "kind": "equipment",
+     "maxLen": 150
+    }
+   ]
+  },
+  "1": {
+   "sections": [
+    {
+     "bb": [
+      0.018,
+      0.27,
+      0.3,
+      0.875
+     ],
+     "kind": "instrument"
+    },
+    {
+     "bb": [
+      0.301,
+      0.07,
+      0.563,
+      0.432
+     ],
+     "kind": "instrument"
+    }
+   ],
+   "manual": [
+    {
+     "bb": [
+      0.58,
+      0.5704,
+      0.605,
+      0.6058
+     ],
+     "label": "PRIMARY CONTROL SYSTEM (SHARED DISPLAY) - LOCATED IN FIELD",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.58,
+      0.6221,
+      0.605,
+      0.6575
+     ],
+     "label": "PRIMARY CONTROL SYSTEM (SHARED DISPLAY) - FRONT OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.58,
+      0.6737,
+      0.605,
+      0.7091
+     ],
+     "label": "PRIMARY CONTROL SYSTEM (SHARED DISPLAY) - REAR OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.615,
+      0.5704,
+      0.64,
+      0.6058
+     ],
+     "label": "SECONDARY CONTROL SYSTEM (PLC) - LOCATED IN FIELD",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.615,
+      0.6221,
+      0.64,
+      0.6575
+     ],
+     "label": "SECONDARY CONTROL SYSTEM (PLC) - FRONT OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.615,
+      0.6737,
+      0.64,
+      0.7091
+     ],
+     "label": "SECONDARY CONTROL SYSTEM (PLC) - REAR OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.651,
+      0.5704,
+      0.676,
+      0.6058
+     ],
+     "label": "COMPUTER SYSTEM / SOFTWARE - LOCATED IN FIELD",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.651,
+      0.6221,
+      0.676,
+      0.6575
+     ],
+     "label": "COMPUTER SYSTEM / SOFTWARE - FRONT OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.651,
+      0.6737,
+      0.676,
+      0.7091
+     ],
+     "label": "COMPUTER SYSTEM / SOFTWARE - REAR OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.6865,
+      0.5704,
+      0.7115,
+      0.6058
+     ],
+     "label": "INSTRUMENT - LOCATED IN FIELD",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.6865,
+      0.6221,
+      0.7115,
+      0.6575
+     ],
+     "label": "INSTRUMENT - FRONT OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.6865,
+      0.6737,
+      0.7115,
+      0.7091
+     ],
+     "label": "INSTRUMENT - REAR OF MAIN PANEL",
+     "kind": "instrument",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.343,
+      0.355,
+      0.363,
+      0.386
+     ],
+     "label": "LIGHT ANNOUNCER (PILOT LIGHT OR BEACON)",
+     "kind": "instrument",
+     "maxLen": 60
+    }
+   ]
+  },
+  "2": {
+   "manual": [
+    {
+     "bb": [
+      0.0825,
+      0.229,
+      0.0975,
+      0.2445
+     ],
+     "label": "MOTOR (TYPICAL M01/M03)",
+     "kind": "equipment",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.391,
+      0.176,
+      0.413,
+      0.19
+     ],
+     "label": "VARIABLE SPEED DRIVE (TYPICAL M02)",
+     "kind": "equipment",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.0825,
+      0.517,
+      0.0975,
+      0.545
+     ],
+     "label": "ON/OFF PNEUMATIC VALVE (TYPICAL V01/V02)",
+     "kind": "valve",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.684,
+      0.527,
+      0.7075,
+      0.548
+     ],
+     "label": "CONTROL VALVE WITH PNEUMATIC POSITIONER (TYPICAL V03)",
+     "kind": "valve",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.064,
+      0.782,
+      0.08,
+      0.815
+     ],
+     "label": "ON/OFF MOTORIZED VALVE (TYPICAL V04)",
+     "kind": "valve",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.375,
+      0.781,
+      0.397,
+      0.815
+     ],
+     "label": "MOTORIZED CONTROL VALVE (TYPICAL V05)",
+     "kind": "valve",
+     "maxLen": 60
+    }
+   ]
+  }
+ },
+ "labels": {
+  "f0-or-generic-closed": {
+   "skip": true
+  },
+  "f0-hose-connection": {
+   "skip": true
+  },
+  "f0-connection-with-flexible-tubing": {
+   "skip": true
+  },
+  "f0-j": {
+   "skip": true
+  },
+  "f0-hu": {
+   "skip": true
+  },
+  "f0-tube": {
+   "skip": true
+  },
+  "f0-blind-flange": {
+   "skip": true
+  },
+  "f0-cap-soldier": {
+   "skip": true
+  },
+  "f0-thermal-insulation": {
+   "skip": true
+  },
+  "f0-cartridge-filter-2": {
+   "skip": true
+  },
+  "f1-with-any": {
+   "skip": true
+  },
+  "f1-pilot-ligth-or": {
+   "skip": true
+  },
+  "f1-beacon": {
+   "skip": true
+  },
+  "f1-ligth-announcer": {
+   "skip": true
+  },
+  "f0-gate-valve": {
+   "label": "GATE VALVE (OR GENERIC)"
+  },
+  "f0-gate-valve-closed": {
+   "label": "GATE VALVE (OR GENERIC) (closed)"
+  },
+  "f0-concentric-reducer-coupling-reducer": {
+   "label": "CONCENTRIC REDUCER / COUPLING REDUCER"
+  },
+  "f0-ws-al-air-supply-os-other-supply": {
+   "label": "WS / AI / OS SUPPLY CONNECTION (WATER / AIR / OTHER)"
+  },
+  "f0-steam-humidity-trap": {
+   "label": "STEAM TRAP / HUMIDITY TRAP"
+  },
+  "f0-heat-exchanger": {
+   "label": "SHELL AND TUBE HEAT EXCHANGER"
+  },
+  "f0-feeder": {
+   "label": "SCREW FEEDER"
+  },
+  "f0-sampler": {
+   "label": "SOLID SAMPLER"
+  },
+  "f0-pump": {
+   "label": "GENERIC GEAR / LOBE PUMP"
+  },
+  "f0-diesel": {
+   "label": "DIESEL GENERATOR"
+  },
+  "f0-bulk": {
+   "label": "BULK SILO TRUCK"
+  },
+  "f0-hydraulic": {
+   "label": "HYDRAULIC UNIT"
+  },
+  "f0-maxibags": {
+   "label": "MAXIBAGS FILLER"
+  },
+  "f0-open-with-inclinated-bottom": {
+   "label": "OPEN TANK WITH INCLINATED BOTTOM"
+  },
+  "f0-tank-truck-side-end": {
+   "label": "TANK TRUCK (SIDE & END)"
+  },
+  "f1-indicates-the-type-of-function-that": {
+   "label": "FUNCTION BLOCK (TYPE OF FUNCTION APPLIED TO THE VARIABLE)"
+  },
+  "f1-handwheel-used": {
+   "label": "HANDWHEEL (USED WITH ANY ACTUATOR)"
+  },
+  "f1-pneumatic-cilinder-actuator": {
+   "label": "PNEUMATIC CYLINDER ACTUATOR"
+  },
+  "f1-electro-pneumatic-positioner": {
+   "label": "ELECTRO / PNEUMATIC POSITIONER (I/P)"
+  },
+  "f1-diaphragm-seal": {
+   "label": "DIAPHRAGM SEAL (PRESSURE / CHEMICAL SEAL)",
+   "small": true
+  },
+  "f1-7": {
+   "skip": true
+  },
+  "f1-temperature-element-with-thermowel": {
+   "label": "TEMPERATURE ELEMENT WITH THERMOWELL"
+  },
+  "f1-self-contained-pressure": {
+   "label": "SELF CONTAINED PRESSURE REDUCING VALVE",
+   "kind": "valve"
+  },
+  "f1-pressure": {
+   "label": "PRESSURE REGULATOR VALVE (BACK PRESSURE)",
+   "kind": "valve"
+  },
+  "f0-drum": {
+   "skip": true
+  },
+  "f0-spacer": {
+   "minScore": 0.93
+  },
+  "f0-blank": {
+   "minScore": 0.93
+  },
+  "f0-atmospheric-vent": {
+   "minScore": 0.93
+  },
+  "f0-drain": {
+   "minScore": 0.93
+  },
+  "f0-stand-pipe": {
+   "minScore": 0.93
+  },
+  "f0-roller-carrier-table": {
+   "skip": true
+  },
+  "f0-well-submersible-pump": {
+   "skip": true
+  },
+  "f0-pallet-with-bags": {
+   "minScore": 0.93
+  },
+  "f0-open-figure-8-blind": {
+   "minScore": 0.93
+  },
+  "f0-closed-figure-8-blind": {
+   "minScore": 0.93
+  },
+  "f0-belt-conveyor": {
+   "minScore": 0.93
+  },
+  "f0-y-type-strainer": {
+   "minScore": 0.93
+  },
+  "f2-variable-speed-drive-typical-m02": {
+   "skip": true
+  }
+ },
+ "defaults": {
+  "instrument": {
+   "scale": [
+    0.6,
+    2.2
+   ]
+  },
+  "equipment": {
+   "scale": [
+    0.6,
+    2.5
+   ]
+  },
+  "valve": {
+   "scale": [
+    0.75,
+    1.6
+   ]
+  },
+  "piping": {
+   "scale": [
+    0.75,
+    1.6
+   ]
+  }
+ }
+}

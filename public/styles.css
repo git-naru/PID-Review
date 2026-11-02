@@ -257,6 +257,13 @@ button { font: inherit; }
 .pv-mark.sel { border-color: var(--high); border-style: solid; border-width: calc(3px / var(--z)); background: color-mix(in srgb, var(--high) 22%, transparent);
   box-shadow: 0 0 0 calc(4px / var(--z)) color-mix(in srgb, var(--high) 25%, transparent); }
 .pv-mark:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+/* 도면 기호(범례에서 배운 모양): 평소엔 투명, 올리면 종류 색. '기호' 체크를 켜면 테두리를 계속 표시 (붉은색은 선택에만) */
+.pv-mark.sym { --sym: #2563eb; border-radius: calc(2px / var(--z)); }
+.pv-mark.sym.valve { --sym: #9333ea; }
+.pv-mark.sym.piping { --sym: #059669; }
+.pv-mark.sym.equipment { --sym: #d97706; }
+.pv-mark.sym:hover { border-color: var(--sym); background: color-mix(in srgb, var(--sym) 14%, transparent); }
+.pid-view.show-sym .pv-mark.sym:not(.sel) { border-color: color-mix(in srgb, var(--sym) 75%, transparent); }
 .pv-val { position: absolute; font-size: calc(11px / var(--z)); line-height: 1.2; padding: 0 calc(3px / var(--z)); color: #0f3d91; background: rgba(255, 255, 255, .85);
   font-weight: 700; white-space: nowrap; cursor: pointer; font-variant-numeric: tabular-nums; }
 .pv-nav { position: absolute; transform: translateX(-50%) scale(calc(1 / var(--z))) translateY(16px); transform-origin: top center; display: flex; gap: 6px; z-index: 5; cursor: default; }
