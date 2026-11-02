@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import { pdfWasmModuleSource } from './pdf-wasm.mjs';
+import { unitLabel } from '../public/units.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -77,6 +78,38 @@ const pdfWorker = (await esbuild.build({
   bundle: true, format: 'iife', globalName: 'pdfjsWorkerModule', minify: true, write: false, logLevel: 'error',
   define: { 'import.meta.url': 'self.location.href' },
 })).outputFiles[0].text;
+// 읽는 중 안내: 프로그램은 파일을 다 읽은 뒤에 시작하므로, 큰 파일(수백 MB)은 그동안 빈 기본 화면(Option 1 · PFD)으로 보인다.
+// 데이터보다 앞에 작은 스크립트를 넣어 처음부터 첫 묶음(예: BL2U · P&ID)을 표시하고, 읽은 도면 수로 진행률을 보여 준다.
+// 프로그램이 시작하면(body.static-view) 안내를 지운다. 오래 멈춰 있으면 브라우저로 열어 보라고 안내한다.
+function loadingBanner() {
+  const first = bundles[0] || {};
+  const m = /^([A-Z0-9_]+)-(PFD|PID)$/.exec(first.slot || '');
+  const unit = m ? m[1] : '';
+  const doc = m ? m[2].toLowerCase() : '';
+  const label = m ? `${unitLabel(unit)} · ${doc === 'pid' ? 'P&ID' : 'PFD'}` : '';
+  const mb = Math.round((data.length + pdfTags.flat().reduce((n, t) => n + t.length, 0)) / 1048576);
+  const cfg = JSON.stringify({ unit, unitText: m ? unitLabel(unit) : '', doc, label, total: fileCount, mb }).replace(/</g, '\\u003c');
+  return `<div id="pid-loading" class="notice info" role="status" style="position:sticky;top:0;z-index:50;margin:8px 16px">파일을 읽는 중입니다…</div>
+  <script>(function () {
+    var c = ${cfg};
+    var sel = document.getElementById('unitSelect');
+    if (sel && c.unit && !sel.options.length) { var o = document.createElement('option'); o.value = c.unit; o.textContent = c.unitText; sel.appendChild(o); }
+    if (c.doc) document.querySelectorAll('#docPick [data-doc]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-doc') === c.doc); });
+    var box = document.getElementById('pid-loading'), t0 = Date.now();
+    function tick() {
+      if (!box) return;
+      if (document.body.classList.contains('static-view')) { box.remove(); return; }
+      var n = document.querySelectorAll('script[id^="pid-pdf-"]:not(#pid-pdf-worker)').length;
+      var pct = c.total ? Math.min(100, Math.round((100 * n) / c.total)) : 0;
+      var slow = Date.now() - t0 > 60000;
+      box.textContent = (c.label ? c.label + ' ' : '') + '도면 ' + c.total + '장(파일 약 ' + c.mb + 'MB)을 읽는 중입니다… ' + pct + '%'
+        + (n >= c.total ? ' · 화면을 준비하는 중' : '')
+        + (slow ? ' · 오래 걸리면 파일을 내려받아 Chrome이나 Edge로 여세요. 앱·메일 미리보기는 큰 파일을 끝까지 열지 못할 수 있습니다.' : '');
+      setTimeout(tick, 400);
+    }
+    tick();
+  })();</script>`;
+}
 // 브라우저 탭 제목은 파일 이름으로 (예: "BL3U_PFD Review")
 const title = path.basename(outPath).replace(/\.html?$/i, '').replace(/&/g, '&amp;').replace(/</g, '&lt;') || `P&amp;ID Review — ${fileCount}개 도면 분석 결과`;
 let page = html
@@ -86,6 +119,7 @@ let page = html
   .replace('<script src="vendor/cytoscape-dagre.js"></script>', () => `<script>${noClose(cyDagre)}</script>`)
   // 프로그램은 파일을 다 읽은 뒤에 시작한다. (읽는 도중에 시작하게 해 봤더니 읽기와 그리기가 서로 느려져 첫 화면이 더 늦었다)
   .replace('<script type="module" src="app.js"></script>', () => [
+    loadingBanner(),
     `<script type="application/json" id="pid-static">${data}</script>`,
     ...pdfTags.flat(),
     `<script type="text/plain" id="pid-pdf-worker">${noClose(pdfWorker)}</script>`,
