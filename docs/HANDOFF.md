@@ -173,7 +173,10 @@
 8-2. **(P&ID) 도면 기호 클릭**: 범례 시트에서 기호 모양을 배워 도면의 계기·밸브·배관 부속·설비 기호를 찾는다. `assemble.mjs`를 다시 돌리면 `symbols`가 빠지므로 **맨 마지막에** 한다.
    - `python3 scripts/session/ocr-legend.py <work>/lg 0:<범례1.pdf> 1:<범례2.pdf> 2:<Typical.pdf>` (기호 설명 글자 OCR, 300 dpi)
    - `node scripts/session/learn-symbols.mjs scripts/session/legend-BL2U.json <work>/lg <work>/lib.json 0:<pdf> 1:<pdf> 2:<pdf> [--sheet <폴더>]` → 기호 사전. `--sheet`는 배운 기호마다 테두리·id를 그린 확인용 SVG.
-   - `node scripts/session/detect-symbols.mjs <result.json> <work>/lib.json <PDF 폴더(원래 파일명)> <out.json>` (시트당 1~5초) → 결과에 `symbols`, `symbol_library`, `stats.symbols`. 계기는 버블 안 태그(텍스트 레이어)로, 밸브·설비는 가까운 태그 + 형식으로 분석 항목에 연결(`node_id`), 위치 없던 항목은 기호 위치로 채움(`loc.source: 'symbol'`).
+   - 세트마다 범례가 따로면 세트별 설정·사전을 만든다. BL2U: 00265 세트는 `legend-BL2U.json`(f0·f1·f2), 00367 세트는 `legend-00367.json`(f15 배관·설비, f16 계장, f17 Typical; fi는 결과 JSON의 파일 번호)
+     - `python3 scripts/session/ocr-legend.py <work>/lg367 15:<pdf> 16:<pdf> 17:<pdf>` → `node scripts/session/learn-symbols.mjs scripts/session/legend-00367.json <work>/lg367 <work>/lib367.json 15:<pdf> 16:<pdf> 17:<pdf>`
+   - `node scripts/session/detect-symbols.mjs <result.json> <work>/lib.json <PDF 폴더(원래 파일명)> <out.json>` (시트당 1~5초)
+     - 세트별 사전: 두 번째 인자를 `00367=<work>/lib367.json+<work>/lib.json,00265=<work>/lib.json`처럼 준다(파일 이름에 그 글자가 든 시트에 그 사전). 00367 도면은 자기 범례와 다르게 그린 기호(상자 모양 편심 리듀서 등)가 있어 00265 사전을 뒤에 함께 쓴다. → 결과에 `symbols`, `symbol_library`, `stats.symbols`. 계기는 버블 안 태그(텍스트 레이어)로, 밸브·설비는 가까운 태그 + 형식으로 분석 항목에 연결(`node_id`), 위치 없던 항목은 기호 위치로 채움(`loc.source: 'symbol'`).
    - 설정 파일(`legend-BL2U.json`): `sheets.<fi>.sections`(설명 글자가 오른쪽에 있는 기호 목록 구역, kind), `manual`(표 칸·Typical처럼 직접 지정), `labels.<id>`(이름 고치기, `skip`, `minScore`, `scale`), `defaults.<kind>.scale`. 다른 세트는 범례 배치가 다르므로 구역을 새로 잡는다.
 9. **결과 업로드**: Artifact `publish`에 `url`, `file_path: result.json`, `asset: true`를 준다.
 10. **완료 표시**: `jobs/<문서>`에 `{status:'done', resultAsset, finishedAt, message}`를 쓴다.
@@ -205,7 +208,7 @@
 | `public/pidview.js` | Flow **기본 보기**: 원본 PDF + 클릭 영역, Line No. 테두리·값 태그, 선택 경로·Main Stream 표시, 선 클릭 선택, 연결목록 버튼, 확대·이동 기억 |
 | `shared/pdfGeom.js` | PDF 벡터 선·화살촉 추출, Stream 경로 추적, 번호 없는 선 추적, Main Stream 선 찾기 |
 | `shared/pidSymbols.js` | 도면 기호: PDF 기본 도형 추출, 범례 기호 템플릿, 회전·배율 맞추기, 겹침 정리 |
-| `scripts/session/ocr-legend.py`, `learn-symbols.mjs`, `detect-symbols.mjs`, `legend-BL2U.json` | 범례 기호 학습 → 도면 기호 찾기·분석 항목 연결 |
+| `scripts/session/ocr-legend.py`, `learn-symbols.mjs`, `detect-symbols.mjs`, `legend-BL2U.json`, `legend-00367.json` | 범례 기호 학습 → 도면 기호 찾기·분석 항목 연결 |
 | `shared/massbalance.js` | 물질수지 읽기·매칭·검토 항목, Flow 표시 값, Li 농도 계산 |
 | `public/chatmode.js` | 채팅 분석 모드: 업로드, 분석 요청, 결과·물질수지 불러오기와 저장 |
 | `public/engine.js` | 페이지에서 바로 분석 |

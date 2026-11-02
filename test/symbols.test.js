@@ -59,3 +59,14 @@ test('범례 도형을 기호 단위로 묶는다 (긴 표 테두리는 뺀다)'
   assert.equal(groups.length, 2);
   assert.deepEqual(groups.map((g) => g.ids.length).sort(), [1, 2]);
 });
+
+test('밸브 선을 빌려 맞은 계기 기호(구동기 등)는 버리고, 따로 그려진 것은 남긴다', () => {
+  // 게이트 밸브 왼쪽 삼각형 + 긴 줄기 = 가짜 "구동기" 모양
+  const tri = (x, y) => prim([[x, y], [x + 11, y + 5.5], [x, y + 11], [x, y]], { closed: true });
+  const stem = (x, y) => prim([[x - 45, y + 5.5], [x, y + 5.5]]);
+  const lib = [library[0], makeTemplate([tri(0, 0), stem(0, 0)], { id: 'act', label: 'ACTUATOR', kind: 'instrument', scale: [0.9, 1.1] })];
+  const prims = [bowtie(100, 100), stem(100, 100), tri(400, 100), stem(400, 100)];
+  const found = detectSymbols(prepareTarget(prims), lib);
+  assert.deepEqual(found.map((f) => f.id).sort(), ['act', 'gate']);
+  assert.ok(found.find((f) => f.id === 'act').bb[0] > 300, '밸브에 붙은 가짜 구동기는 없다');
+});

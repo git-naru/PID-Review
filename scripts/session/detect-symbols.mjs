@@ -1,7 +1,10 @@
 // 범례에서 배운 기호(learn-symbols.mjs 결과)를 P&ID 시트에서 찾아 분석 결과에 넣는다.
 //
-// 사용: node scripts/session/detect-symbols.mjs <result.json> <library.json> <PDF 폴더> <출력 result.json>
+// 사용: node scripts/session/detect-symbols.mjs <result.json> <library.json | 세트=library.json,...> <PDF 폴더> <출력 result.json>
 //   PDF 폴더: 결과 JSON의 files[].name 그대로인 PDF들
+//   도면 세트마다 범례가 다르면 `00367=lib367.json,00265=lib265.json`처럼 준다: 파일 이름에 그 글자가 든 시트는 그 사전으로 찾는다
+//   (어느 세트에도 안 맞으면 첫 사전). `00367=lib367.json+lib265.json`처럼 +로 이으면 두 사전을 함께 쓴다
+//   (도면이 자기 범례와 다르게 그린 기호, 예: 00367의 상자 모양 편심 리듀서는 00265 범례 그림과 같다)
 // 결과 JSON에 더하는 것
 //   symbols: [{id, sym, label, kind, loc:{file_index, page, bbox, source:'symbol'}, rot, score, text?, node_id?}]
 //     kind: instrument(계기) | valve(밸브) | piping(배관 부속) | equipment(설비)
@@ -15,7 +18,11 @@ import { extractPrimitives, prepareTarget, detectSymbols } from '../../shared/pi
 
 const [resPath, libPath, pdfDir, outPath] = process.argv.slice(2);
 const result = JSON.parse(fs.readFileSync(resPath, 'utf8'));
-const library = JSON.parse(fs.readFileSync(libPath, 'utf8'));
+const libs = libPath.split(',').map((spec) => {
+  const m = /^([^=]+)=(.+)$/.exec(spec);
+  return { key: m ? m[1] : '', library: (m ? m[2] : spec).split('+').flatMap((f) => JSON.parse(fs.readFileSync(f, 'utf8'))) };
+});
+const libraryFor = (name) => (libs.find((l) => l.key && name.includes(l.key)) || libs[0]).library;
 const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 // 기호 이름과 분석 결과 항목 형식이 어울리는지 (예: BALL VALVE ↔ Ball Valve, 형식이 'Manual Valve'처럼 일반적이면 아무 밸브나)
@@ -45,7 +52,7 @@ for (const [k, d] of sheets.entries()) {
   const doc = await task.promise;
   const page = await doc.getPage(d.page || 1);
   const { W, H, prims } = await extractPrimitives(page, pdfjs.OPS, pdfjs.Util);
-  const found = detectSymbols(prepareTarget(prims), library);
+  const found = detectSymbols(prepareTarget(prims), libraryFor(f.name));
   // 기호 안의 글자 (텍스트 레이어)
   const vp = page.getViewport({ scale: 1 });
   const tc = await page.getTextContent();
@@ -118,7 +125,7 @@ for (const [k, d] of sheets.entries()) {
   t0 = Date.now();
 }
 result.symbols = symbols;
-result.symbol_library = library.map(({ id, label, kind, source }) => ({ id, label, kind, source }));
+result.symbol_library = [...new Map(libs.flatMap((l) => l.library).map((t) => [t.id, t])).values()].map(({ id, label, kind, source }) => ({ id, label, kind, source }));
 result.stats = { ...result.stats, symbols: symbols.length };
 fs.writeFileSync(outPath, JSON.stringify(result));
 console.log('기호 합계', symbols.length, counts, '연결', symbols.filter((s) => s.node_id).length);

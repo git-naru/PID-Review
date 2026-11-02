@@ -378,6 +378,10 @@ function suppress(found, target) {
     // 겹치는 기존 결과를 모두 이겨야 대신 들어간다
     if (clash.every((k) => better(k, f) === f)) keep = keep.filter((k) => !clash.includes(k)).concat(f);
   }
+  // 계기 쪽 기호(구동기 등)의 점이 옆 밸브 기호의 선을 상당 부분 빌려 쓰고 있으면 밸브의 일부다
+  // (예: 닫힌 볼 밸브의 원 반쪽 + 배관 토막이 다이어프램 구동기 모양에 맞는 경우. 진짜 구동기는 밸브 위에 따로 그려진다)
+  const valves = keep.filter((k) => k.kind === 'valve');
+  keep = keep.filter((f) => f.kind !== 'instrument' || !valves.some((v) => touch(v, f) && covered(f, v) >= 0.25));
   return keep.map(({ _tp, _hit, _g, ...r }) => r);
 }
 
