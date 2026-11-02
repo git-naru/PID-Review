@@ -35,6 +35,30 @@
      "kind": "equipment",
      "maxLen": 150
     }
+   ],
+   "manual": [
+    {
+     "bb": [
+      0.675,
+      0.392,
+      0.705,
+      0.41
+     ],
+     "label": "INSULATED LINE MARK (N / H / C / FP)",
+     "kind": "piping",
+     "maxLen": 60
+    },
+    {
+     "bb": [
+      0.675,
+      0.447,
+      0.705,
+      0.465
+     ],
+     "label": "ELECTRICAL TRACING MARK (ET)",
+     "kind": "piping",
+     "maxLen": 60
+    }
    ]
   },
   "1": {
