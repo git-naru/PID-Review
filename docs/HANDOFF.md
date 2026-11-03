@@ -148,6 +148,8 @@
   - 결과: Case 1 PFD 13장(설비 62, 스트림 163, 높음 7) asset `d81f50a6…`, Case 2 15장(설비 83, 스트림 207, 높음 5) `fd9025ad…`, Case 3 9장(설비 36, 스트림 97, 높음 2) `048f838a…`, Case 4 9장(설비 38, 스트림 97, 높음 1) `68f0a923…`. 제품 LDP: 733.2 / 4,413.2 / 742.0 / 4,469.3 kg/h. Case 1·2는 TG 탄산리튬 정제부터, Case 3·4는 BG 수산화리튬 용해부터.
   - 도면 글자 대부분이 외곽선(텍스트 레이어 거의 없음). 표제란은 tesseract OCR로 도면 번호·제목을 읽었다(`job5/tbocr.py`, "1110"을 "4410"으로 읽는 것은 도면 번호로 고침). 시트 위 FLOW SHEET 표(유체·상·P/T·kg/h·pH)를 Stream specs로 읽어 Flow 값으로 쓴다(`doc.json` note에 이 세트 규칙).
   - **고친 버그**: 한 PDF에 시트가 여러 장인 세트에서 위치 찾기(`postprocess.js` `locate`)가 같은 파일의 다른 페이지 글자로 항목을 옮겨, Off-page 짝짓기가 대량으로 틀어졌다(대응 Off-page 없음 18→5 등). 시트가 정해진 항목은 그 페이지에서만 찾는다(테스트 추가).
+  - **Stream 번호 표식(사용자 확인, 11/3)**: 마름모 안 윗줄·아랫줄이 한 번호다(윗줄 "1114" 아랫줄 "001" = Stream 1114-001). 스트림은 어느 시트에 나와도 그 번호를 그대로 쓰므로, 시트·출발 설비의 구역(1115 시트의 1114-001 등)과 앞자리가 달라도 오류가 아니다 → 그런 검토 항목 4건(Case 2) 삭제, PFD 지침(`shared/prompts.js` PFD_NOTE)에 규칙 추가. 마름모 294개를 그림으로 대조해 판독 번호가 모두 맞음을 확인했다.
+  - `scripts/session/snap-streams.mjs <result.json> <PDF 폴더> [out]`: PDF 벡터에서 마름모를 찾아 번호 있는 스트림 위치를 정확히 맞춘다(`loc.source: 'symbol'`, 화면 "도면 기호 위치"). DLPA 4개 Case 전부(91/101/50/50) 맞춤. 결과 asset: Case 1 `4f101993…`, Case 2 `46ad35a9…`, Case 3 `8f4bfec9…`, Case 4 `411a5fe7…`(db `jobs/*` `resultAsset`).
   - Mass Balance(사용자 폴더 02번)는 아직 안 올라왔다. 올라오면 `massbalance/<문서>`(Case별)에 저장되고 페이지가 자동 매칭한다. HTML에 넣으려면 `apply-massbalance.mjs` 후 다시 빌드.
   - 보낸 파일: `DLPA_PFD Review.html`(약 14MB, Case 1~4): `build-standalone.mjs --units dist/artifact-dlpa/units.js --multi "DLPA_PFD Review.html" DLPA-PFD <c1 result> <PDF> DLPA_C2-PFD <c2> <PDF> DLPA_C3-PFD … DLPA_C4-PFD …`
 - **BL3U Option 2 · PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00011~00018` Rev. B, job4)
@@ -229,7 +231,7 @@
 | `scripts/build-artifact.mjs` | 아티팩트 번들(`dist/artifact`, `dist/artifact-chat`, 프로젝트별 채팅 페이지 `dist/artifact-dlpa`) |
 | `scripts/build-standalone.mjs` | 보기 전용 단일 HTML |
 | `scripts/apply-massbalance.mjs` | 결과 JSON에 물질수지 적용(단일 HTML용) |
-| `scripts/session/*` | 채팅 분석 단계별 스크립트 |
+| `scripts/session/*` | 채팅 분석 단계별 스크립트 (PFD 스트림 마름모 위치 맞추기: `snap-streams.mjs`) |
 | `samples/` | 샘플 범례 1장 + P&ID 2장, 데모 결과, 샘플 물질수지(`PID-100-MB.xlsx/.csv`) |
 | `test/postprocess.test.js`, `test/massbalance.test.js` | 테스트 23개(후처리·병합·경로 추적·물질수지·Li) |
 | `README.md` | 사용법 전체 |
