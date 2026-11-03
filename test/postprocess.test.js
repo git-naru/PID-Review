@@ -236,3 +236,21 @@ test('태그가 텍스트로 들어 있는 페이지만 텍스트 레이어로 �
   const titleOnly = { runs: [{ text: '319020-00265-2100-PI-PID-00201' }, { text: 'SAL DE ORO PROJECT STAGE 2 - DETAILED ENGINEERING' }, { text: 'FIT' }, { text: '1186' }] };
   assert.equal(hasTagText(titleOnly), false);
 });
+
+test('한 PDF에 여러 시트가 든 세트: 시트가 정해진 항목은 같은 파일의 다른 페이지로 옮겨 가지 않는다', async () => {
+  const { files, raw } = await loadSamples();
+  // PID-100-001(글자 없음)과 PID-100-002를 한 파일의 1·2쪽으로
+  const p1 = { ...files[1].text.pages[0], page: 1, runs: [] };
+  const p2 = { ...files[2].text.pages[0], page: 2 };
+  const set = [files[0], { name: 'set.pdf', text: { ...files[1].text, pageCount: 2, pages: [p1, p2] } }];
+  const move = (loc) => (loc && loc.file_index === 2 ? { ...loc, file_index: 1, page: 2 } : loc);
+  const r = postprocess({
+    ...raw,
+    drawings: raw.drawings.map((d) => (d.file_index === 2 ? { ...d, file_index: 1, page: 2 } : d)),
+    nodes: raw.nodes.map((n) => ({ ...n, loc: move(n.loc) })),
+    lines: raw.lines.map((l) => ({ ...l, loc: move(l.loc) })),
+    issues: raw.issues.map((x) => ({ ...x, loc: move(x.loc) })),
+  }, set);
+  const opc = r.nodes.find((n) => n.id === 'OPC:PID-100-001:1');
+  assert.deepEqual([opc.loc.file_index, opc.loc.page], [1, 1], '1쪽(PID-100-001)의 연결은 2쪽 글자로 옮겨 가지 않는다');
+});

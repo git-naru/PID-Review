@@ -395,7 +395,9 @@ function locate(item, candidates, files, skipPages) {
   for (const text of candidates) {
     if (!text || normalizeTag(text).length < 3) continue;
     for (const [fi, file] of searchFiles) {
-      const pages = file.text.pages.filter((p) => !skipPages.has(`${fi}:${p.page}`));
+      // 시트가 정해진 항목은 그 페이지에서만 (한 PDF에 여러 시트가 든 세트: 글자가 외곽선인 시트의 항목이
+      // 같은 파일 다른 페이지의 같은 글자로 옮겨 가 Off-page 짝짓기·위치가 틀어진다)
+      const pages = file.text.pages.filter((p) => !skipPages.has(`${fi}:${p.page}`) && (!pinned || p.page === item.loc.page));
       const mb = item.loc.bbox;
       const near = mb && fi === item.loc.file_index ? [(mb[0] + mb[2]) / 2, (mb[1] + mb[3]) / 2] : null;
       const hit = findTagOnPages(text, pages, fi === item.loc.file_index ? item.loc.page : 1, near);

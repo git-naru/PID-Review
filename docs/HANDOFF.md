@@ -143,6 +143,13 @@
     - 알려진 한계: f111(00367-6000-PID-00032) 서비스 스테이션의 가로 밸브에 닫힘 띠가 세로로 그려진 볼 밸브는 어느 범례에도 없는 변형이라 아직 일부가 다이어프램 구동기로 잡힌다(70→28). 범례에 없는 기호(벤트 캡 등)는 표시되지 않는다. 같은 모양이 두 범례에 다 있으면 상세의 "범례" 출처가 00265로 나올 수 있다.
   - Filtering Earth 제조·분배 2장(Rev. N)은 CANCELED, 벤더 패키지 안 라인과 일부 압축공기 시트는 라인 번호 없음
   - 판독은 Agent 13개 동시 실행, 사용량 제한(429)에 한 번 걸려 리셋 후 빠진 시트만 다시 띄웠다.
+- **DLPA · PFD 분석 완료 (11/3)** (LDP PFS PROJECT, POSCO Holdings / Perpetual Technology, `PLDP-1000-PR-PFD-0001_E`~`0004_A`, job5)
+  - 올린 4개 파일이 **CASE 1~4**(대안 4개, 파일마다 표지 + PFD)라 Case별로 따로 분석했다. 네 Case가 같은 도면 번호(PLDP-1110-PR-PFD-0001…)·Stream 번호(1111-001…)를 써서 한 결과로 합치면 Off-page·물질수지가 섞인다. DLPA 페이지 드롭박스 Case 1~4(묶음 키 `DLPA-PFD`(db `current`), `DLPA_C2-PFD`, `DLPA_C3-PFD`, `DLPA_C4-PFD`).
+  - 결과: Case 1 PFD 13장(설비 62, 스트림 163, 높음 7) asset `d81f50a6…`, Case 2 15장(설비 83, 스트림 207, 높음 5) `fd9025ad…`, Case 3 9장(설비 36, 스트림 97, 높음 2) `048f838a…`, Case 4 9장(설비 38, 스트림 97, 높음 1) `68f0a923…`. 제품 LDP: 733.2 / 4,413.2 / 742.0 / 4,469.3 kg/h. Case 1·2는 TG 탄산리튬 정제부터, Case 3·4는 BG 수산화리튬 용해부터.
+  - 도면 글자 대부분이 외곽선(텍스트 레이어 거의 없음). 표제란은 tesseract OCR로 도면 번호·제목을 읽었다(`job5/tbocr.py`, "1110"을 "4410"으로 읽는 것은 도면 번호로 고침). 시트 위 FLOW SHEET 표(유체·상·P/T·kg/h·pH)를 Stream specs로 읽어 Flow 값으로 쓴다(`doc.json` note에 이 세트 규칙).
+  - **고친 버그**: 한 PDF에 시트가 여러 장인 세트에서 위치 찾기(`postprocess.js` `locate`)가 같은 파일의 다른 페이지 글자로 항목을 옮겨, Off-page 짝짓기가 대량으로 틀어졌다(대응 Off-page 없음 18→5 등). 시트가 정해진 항목은 그 페이지에서만 찾는다(테스트 추가).
+  - Mass Balance(사용자 폴더 02번)는 아직 안 올라왔다. 올라오면 `massbalance/<문서>`(Case별)에 저장되고 페이지가 자동 매칭한다. HTML에 넣으려면 `apply-massbalance.mjs` 후 다시 빌드.
+  - 보낸 파일: `DLPA_PFD Review.html`(약 14MB, Case 1~4): `build-standalone.mjs --units dist/artifact-dlpa/units.js --multi "DLPA_PFD Review.html" DLPA-PFD <c1 result> <PDF> DLPA_C2-PFD <c2> <PDF> DLPA_C3-PFD … DLPA_C4-PFD …`
 - **BL3U Option 2 · PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00011~00018` Rev. B, job4)
   - 결과: 설비 112, 스트림/라인 198, 검토 항목 77건(높음 0). 물질수지 `319020-00626-0000-PR-CAL-00002_B.xlsx`(Stream 2101~2950) 54개 중 51개 매칭(2315~2317은 Pond 합계라 도면에 없음), 값 불일치 5건(2214, 2435, 2517, 2631, 2636).
   - db `jobs/BL3U_OP2-PFD`: `status: done`, 결과 asset `5de236e0e28fae4439be5fd00c179b72`(질의 반영본, 이전 `100e0824…`, `06c83096…`). 물질수지 db `massbalance/BL3U_OP2-PFD`(asset `2d5a2eef…`).
