@@ -1,17 +1,21 @@
 // 분석 결과와 도면 PDF를 모두 넣은 단일 HTML(보기 전용)을 만든다. 서버·인터넷 없이 PC에서 열어 볼 수 있다.
-// 사용법: node scripts/build-standalone.mjs <result.json> <pdf-dir> <out.html> [공정 단위-도면 종류, 예: BL2U-PFD]
+// 사용법: node scripts/build-standalone.mjs [--units <units.js>] <result.json> <pdf-dir> <out.html> [공정 단위-도면 종류, 예: BL2U-PFD]
 //         node scripts/build-standalone.mjs --multi <out.html> <묶음 키> <result.json> <pdf-dir> [<묶음 키> <result.json> <pdf-dir> ...]
 //   pdf-dir 안에서 result.files[i].name과 같은 이름의 PDF를 찾는다.
 //   --multi: 여러 묶음(BL3U-PFD, BL2U-PID 등)을 한 파일에 넣고, 공정 단위·PFD / P&ID 선택으로 바꿔 본다. 처음엔 첫 묶음이 열린다.
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { pdfWasmModuleSource } from './pdf-wasm.mjs';
-import { unitLabel } from '../public/units.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
+// --units <units.js>: 드롭박스 구분 이름을 그 파일로 (예: DLPA Case 1~4 → dist/artifact-dlpa/units.js). 없으면 public/units.js
+let unitsFile = path.join(ROOT, 'public/units.js');
+const ui = argv.indexOf('--units');
+if (ui >= 0) { unitsFile = path.resolve(argv[ui + 1]); argv.splice(ui, 2); }
+const { unitLabel } = await import(pathToFileURL(unitsFile).href);
 let outPath, bundleArgs;
 if (argv[0] === '--multi') {
   outPath = argv[1];
@@ -35,6 +39,7 @@ const resolvePaths = {
   setup(build) {
     build.onResolve({ filter: /^\.\/vendor\/pdf\.min\.mjs$/ }, () => ({ path: path.join(ROOT, 'node_modules/pdfjs-dist/legacy/build/pdf.min.mjs') }));
     build.onResolve({ filter: /^\.\/shared\// }, (a) => ({ path: path.join(ROOT, a.path) }));
+    build.onResolve({ filter: /^\.\/units\.js$/ }, () => ({ path: unitsFile }));
     build.onResolve({ filter: /^\.\/vendor\/pdf-wasm\.js$/ }, () => ({ path: 'pdf-wasm', namespace: 'pid-wasm' }));
     build.onLoad({ filter: /.*/, namespace: 'pid-wasm' }, async () => ({ contents: await pdfWasmModuleSource(), loader: 'js' }));
   },
