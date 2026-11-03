@@ -10,7 +10,8 @@ import { normalizeTag, extractTextFromDocument } from './pidText.js';
 export class MassBalanceError extends Error {}
 
 const STREAM_LABEL = /stream|스트림|^str\b|^no\.?$|^번호$/i;
-const ID_RE = /^(?:(?:stream|str|s)[\s.#-]*)?[A-Z]{0,3}-?\d{1,5}[A-Z]{0,2}$/i;
+// 스트림 번호: 2101, S-101, 207A, 그리고 구역-번호 형식 1111-001 (PFD 마름모 표식 윗줄·아랫줄, DLPA)
+const ID_RE = /^(?:(?:stream|str|s)[\s.#-]*)?(?:[A-Z]{0,3}-?\d{1,5}|\d{2,5}-\d{1,4})[A-Z]{0,2}$/i;
 const SPECIAL = [
   // "Unit" 열 머리글 행에 스트림 설명을 적는 양식도 있다
   ['description', /^(stream\s*)?(desc|description|service|name)\b|명칭|설명|서비스|^units?$|^단위$/i],

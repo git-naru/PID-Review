@@ -150,7 +150,8 @@
   - **고친 버그**: 한 PDF에 시트가 여러 장인 세트에서 위치 찾기(`postprocess.js` `locate`)가 같은 파일의 다른 페이지 글자로 항목을 옮겨, Off-page 짝짓기가 대량으로 틀어졌다(대응 Off-page 없음 18→5 등). 시트가 정해진 항목은 그 페이지에서만 찾는다(테스트 추가).
   - **Stream 번호 표식(사용자 확인, 11/3)**: 마름모 안 윗줄·아랫줄이 한 번호다(윗줄 "1114" 아랫줄 "001" = Stream 1114-001). 스트림은 어느 시트에 나와도 그 번호를 그대로 쓰므로, 시트·출발 설비의 구역(1115 시트의 1114-001 등)과 앞자리가 달라도 오류가 아니다 → 그런 검토 항목 4건(Case 2) 삭제, PFD 지침(`shared/prompts.js` PFD_NOTE)에 규칙 추가. 마름모 294개를 그림으로 대조해 판독 번호가 모두 맞음을 확인했다.
   - `scripts/session/snap-streams.mjs <result.json> <PDF 폴더> [out]`: PDF 벡터에서 마름모를 찾아 번호 있는 스트림 위치를 정확히 맞춘다(`loc.source: 'symbol'`, 화면 "도면 기호 위치"). DLPA 4개 Case 전부(91/101/50/50) 맞춤. 결과 asset: Case 1 `4f101993…`, Case 2 `46ad35a9…`, Case 3 `8f4bfec9…`, Case 4 `411a5fe7…`(db `jobs/*` `resultAsset`).
-  - Mass Balance(사용자 폴더 02번)는 아직 안 올라왔다. 올라오면 `massbalance/<문서>`(Case별)에 저장되고 페이지가 자동 매칭한다. HTML에 넣으려면 `apply-massbalance.mjs` 후 다시 빌드.
+  - **Case 1 물질수지 (11/3)**: `PLDP-1000-PR-PMB-0001_F.xlsx`(시트 "Stream Table", 머리글 `Streams ID` 행에 1111-001…1141-007, 59개, 연간 기준 310일). 페이지에서 "매칭이 안 된다"(실제로는 스트림 번호 행을 못 찾음)고 해서 확인: 물질수지 읽기의 스트림 번호 형식(`ID_RE`)이 `1111-001` 같은 구역-번호 형식을 몰랐다 → 허용(테스트 추가). 59/59 매칭, 도면 표 값과 차이 없음. 페이지 db `massbalance/current`(asset `daf0486a…`)에 저장, 세 페이지(DLPA·채팅·직접 분석) 모두 다시 올림. HTML은 Case 1에 물질수지 적용(`apply-massbalance.mjs`).
+  - Case 2~4 물질수지는 아직 안 올라왔다. 올라오면 `massbalance/<문서>`(Case별)에 저장되고 페이지가 자동 매칭한다. HTML에 넣으려면 `apply-massbalance.mjs` 후 다시 빌드.
   - 보낸 파일: `DLPA_PFD Review.html`(약 14MB, Case 1~4): `build-standalone.mjs --units dist/artifact-dlpa/units.js --multi "DLPA_PFD Review.html" DLPA-PFD <c1 result> <PDF> DLPA_C2-PFD <c2> <PDF> DLPA_C3-PFD … DLPA_C4-PFD …`
 - **BL3U Option 2 · PFD 8장 분석 완료** (`319020-00626-0000-PR-PFD-00011~00018` Rev. B, job4)
   - 결과: 설비 112, 스트림/라인 198, 검토 항목 77건(높음 0). 물질수지 `319020-00626-0000-PR-CAL-00002_B.xlsx`(Stream 2101~2950) 54개 중 51개 매칭(2315~2317은 Pond 합계라 도면에 없음), 값 불일치 5건(2214, 2435, 2517, 2631, 2636).

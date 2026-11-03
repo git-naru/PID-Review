@@ -196,3 +196,14 @@ test('도면 안 스트림 표: 라인 specs를 물질수지로 모아 Li 농도
   assert.equal(out.issues.length, 0, '도면 자신과 비교하는 검토 항목은 없음');
   assert.equal(drawingMassBalance({ ...result, lines: [line('1095', [])] }), null);
 });
+
+test('구역-번호 형식 스트림(1111-001, PFD 마름모 윗줄·아랫줄)도 머리글로 읽고 도면 스트림과 맞춘다', () => {
+  const mb = parseMassBalance(grid([
+    ['Streams ID', '', '1111-001', '1111-002', '1114-001'],
+    ['Description (Source → Destination)', '', '? → 1111-PKG01', '1111-C1-TK01A,B → 1112-RTR01A,B', '1114-C1-TK01 → 1115'],
+    ['Mass Flow', 'kg/h', '260.9', '7772.7', '7926.4'],
+  ]));
+  assert.deepEqual(mb.streams.map((s) => s.key), ['1111-001', '1111-002', '1114-001']);
+  assert.equal(mb.streams[2].values['massflow|kg/h'], '7926.4');
+  assert.equal(streamKey('1114-001'), '1114-001');
+});
