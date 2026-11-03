@@ -69,6 +69,46 @@ const chatPage = page
 if (chatPage === page) throw new Error('채팅 분석용 페이지를 만들지 못했습니다 (<title> 확인)');
 await fs.writeFile(path.join(CHAT, 'index.html'), chatPage);
 
+// 프로젝트별 채팅 분석 페이지(예: DLPA): 같은 화면에 드롭박스 구분만 그 프로젝트로 바꾼다.
+// 저장소(db·assets)는 아티팩트마다 따로라 기존 BL3U 페이지 자료와 섞이지 않는다.
+const PROJECTS = [{ key: 'DLPA', dir: 'artifact-dlpa' }];
+for (const pj of PROJECTS) {
+  const dir = path.join(ROOT, 'dist', pj.dir);
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.cp(CHAT, dir, { recursive: true });
+  const swap = (src, pairs, file) => pairs.reduce((t, [a, b]) => {
+    if (!t.includes(a)) throw new Error(`${pj.key} 페이지: ${file}에서 "${a}"를 찾지 못했습니다`);
+    return t.split(a).join(b);
+  }, src);
+  await fs.writeFile(path.join(dir, 'index.html'), swap(chatPage, [
+    ['<title>P&amp;ID 채팅 분석</title>', `<title>${pj.key} 채팅 분석</title>`],
+    ['title="BL3U Option"', 'title="프로젝트"'],
+    ['어느 Option의 어떤 도면인지 고르세요.', 'PFD인지 P&amp;ID인지 고르세요.'],
+    ['<label class="slot-unit">BL3U <select', '<label class="slot-unit">프로젝트 <select'],
+  ], 'index.html'));
+  const app = await fs.readFile(path.join(dir, 'app.js'), 'utf8');
+  await fs.writeFile(path.join(dir, 'app.js'), swap(app, [
+    ["'어느 Option · 도면 종류의 물질수지인지 고르세요.'", "'어느 도면 종류(PFD / P&ID)의 물질수지인지 고르세요.'"],
+    ["'어느 Option의 어떤 도면인지 고르세요.'", "'PFD인지 P&ID인지 고르세요.'"],
+    ['다른 Option · 도면 종류로', '다른 도면 종류로'],
+  ], 'app.js'));
+  const chat = await fs.readFile(path.join(dir, 'chatmode.js'), 'utf8');
+  await fs.writeFile(path.join(dir, 'chatmode.js'), swap(chat, [
+    ['"BL3U · PFD 분석 요청했어"', `"${pj.key} · PFD 분석 요청했어"`],
+    ['<b>도면 올리기</b>를 눌러 공정 단위와 PFD / P&amp;ID를 고른 뒤 ② 범례와 도면 PDF를 올리고', '<b>도면 올리기</b>로 PFD PDF를, <b>물질수지 입력</b>으로 Mass Balance 파일을 올리고 ②'],
+    ['③ <b>분석 요청</b>을 누르고 ④', '<b>분석 요청</b>을 누르고 ③'],
+  ], 'chatmode.js'));
+  await fs.writeFile(path.join(dir, 'units.js'), `// ${pj.key} 전용 채팅 분석 페이지 (build-artifact.mjs가 만든다)
+export const UNITS = [{ value: '${pj.key}', label: '${pj.key}' }];
+export const DEFAULT_UNIT = '${pj.key}';
+export const unitLabel = (u) => UNITS.find((x) => x.value === u)?.label || u;
+export const slotLabel = (key) => {
+  const m = /^(.*)-(PFD|PID)$/.exec(key);
+  return m ? \`\${unitLabel(m[1])} · \${m[2] === 'PID' ? 'P&ID' : 'PFD'}\` : key;
+};
+`);
+}
+
 const list = [];
 const walk = async (dir) => {
   for (const e of await fs.readdir(dir, { withFileTypes: true })) {

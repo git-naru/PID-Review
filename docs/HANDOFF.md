@@ -14,6 +14,7 @@
 1. **채팅 분석 (주력)**: https://claude.ai/artifact/BjLxfaLP3jJLLJ3mk1TbND (비공개)
    - 페이지는 도면 업로드와 결과 보기만 한다.
    - 사용자가 채팅에 "분석 요청했어"라고 하면 Claude Code 세션이 분석해 결과를 페이지에 넣는다. 절차는 4장에 있다.
+   - **DLPA 프로젝트 전용 채팅 분석 페이지 (11/3)**: https://claude.ai/artifact/C9gN8PNnbT4tKbouo6YmAC (비공개). 사용자 요청: "DLPA는 별도로", "기존 BL3U·BL2U처럼 버튼을 눌러 업로드". `build-artifact.mjs`가 `dist/artifact-dlpa`로 만든다(채팅 페이지와 같은 코드, 드롭박스 구분만 DLPA, 문구 조정). 저장소가 따로라 BL3U 자료와 섞이지 않는다. 기본 묶음이 DLPA-PFD라 db 문서는 `jobs/current`, `massbalance/current`(P&ID면 `jobs/DLPA-PID`). 같은 4장 절차로 분석하고, 결과 HTML은 DLPA만 따로(`build-standalone.mjs … DLPA-PFD`, 예: `DLPA_PFD Review.html`).
 2. **페이지에서 바로 분석**: https://claude.ai/artifact/4x6tjroj1SAKnMPnw9Ga2f ("링크가 있는 누구나" 공유 상태)
    - 사용자 계정의 Claude로 분석한다. 실제 대량 분석은 미검증이다.
 3. **로컬 서버**: `npm start`, API 키가 필요하다. 사용자가 비용 때문에 쓰지 않고 있다.
@@ -218,7 +219,7 @@
 | `public/engine.js` | 페이지에서 바로 분석 |
 | `shared/postprocess.js`, `merge.js`, `pidText.js`, `prompts.js` | 결과 정규화·검증, 시트 병합, 텍스트 위치, 판독 지침 |
 | `server/*.js` | 로컬 서버(API 키 방식) |
-| `scripts/build-artifact.mjs` | 아티팩트 번들(`dist/artifact`, `dist/artifact-chat`) |
+| `scripts/build-artifact.mjs` | 아티팩트 번들(`dist/artifact`, `dist/artifact-chat`, 프로젝트별 채팅 페이지 `dist/artifact-dlpa`) |
 | `scripts/build-standalone.mjs` | 보기 전용 단일 HTML |
 | `scripts/apply-massbalance.mjs` | 결과 JSON에 물질수지 적용(단일 HTML용) |
 | `scripts/session/*` | 채팅 분석 단계별 스크립트 |
